@@ -100,7 +100,7 @@ if __name__ == "__main__":
             mensaje_final += "🚆 *Cercanías destino Madrid:*\n"
             for t in trenes[:5]:
                 tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
-                mensaje_final += f"• {t['hora_original']} - {tiempo} - L{t['linea']}\n"
+                mensaje_final += f"• {t['hora_original']} - {tiempo} - {t['linea']}\n"
             mensaje_final += "\n"
     except Exception as e:
         mensaje_final += f"❌ Error extrayendo Cercanías: {e}\n\n"
@@ -127,7 +127,7 @@ if __name__ == "__main__":
             else:
                 for t in tiempos_buses[:limite]:
                     tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
-                    mensaje_final += f"• {t['hora_llegada']} - {tiempo} - L{t['linea']}\n"
+                    mensaje_final += f"• {t['hora_llegada']} - {tiempo} - {t['linea']}\n"
                 mensaje_final += "\n"
     except Exception as e:
         mensaje_final += f"❌ Error extrayendo Autobuses: {e}"
