@@ -77,6 +77,7 @@ class CorrecaminosBot:
 if __name__ == "__main__":
     from cercanias import Cercanias
     from buses import Buses
+    from rutas import RutasGoogle
     
     bot = CorrecaminosBot()
     print("Buscando nuevos usuarios...")
@@ -108,6 +109,8 @@ if __name__ == "__main__":
     # 2. Autobuses Interurbanos
     try:
         b = Buses()
+        rg = RutasGoogle()
+        
         paradas_config = [
             {"id": "12910", "nombre": "Colegio FGL", "limite": 3},
             {"id": "17699", "nombre": "Farmacia Rotonda FGL", "limite": 5},
@@ -121,7 +124,11 @@ if __name__ == "__main__":
             
             tiempos_buses = b.obtener_tiempos_parada(id_parada)
             
-            mensaje_final += f"🚌 *Buses - {nombre} (Parada {id_parada}):*\n"
+            # Extraer tiempo estimado desde este origen a Moncloa usando Google
+            tiempo_viaje = rg.obtener_tiempo_a_moncloa(nombre)
+            texto_viaje = f"(~{tiempo_viaje} a Moncloa)" if tiempo_viaje else ""
+            
+            mensaje_final += f"🚌 *Buses - {nombre} {texto_viaje}:*\n"
             if not tiempos_buses:
                 mensaje_final += "No hay buses próximos.\n\n"
             else:
