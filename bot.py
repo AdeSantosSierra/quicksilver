@@ -76,9 +76,9 @@ class CorrecaminosBot:
 
 if __name__ == "__main__":
     from cercanias import Cercanias
+    from buses import Buses
     
     bot = CorrecaminosBot()
-    # 1. Update subscriptors list listening to /start
     print("Buscando nuevos usuarios...")
     bot.fetch_new_users()
     
@@ -86,24 +86,51 @@ if __name__ == "__main__":
         print("No hay suscriptores. Abortando broadcast.")
         exit(0)
     
-    # 2. Extract train schedule
-    print("Extrayendo datos de la web de Adif...")
+    print("Extrayendo datos de la web de Adif y CRTM...")
+    mensaje_final = ""
+    
+    # 1. Trenes de Cercanías
     try:
         c = Cercanias()
         trenes = c.obtener_proximos_trenes_madrid()
         
         if not trenes:
-            mensaje = "⚠️ *Información Cercanías Majadahonda*\n\nNo se han encontrado trenes próximos con destino Madrid."
+            mensaje_final += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
         else:
-            mensaje = "🚆 *Próximos trenes destino Madrid (desde Majadahonda):*\n\n"
-            # Limitar a los próximos 5
+            mensaje_final += "🚆 *Cercanías destino Madrid:*\n"
             for t in trenes[:5]:
                 tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
-                mensaje += f"• {t['hora_original']} - {tiempo} - {t['linea']}\n"
-                
-        bot.broadcast(mensaje)
-        print("Broadcast completado exitosamente.")
+                mensaje_final += f"• {t['hora_original']} - {tiempo} - L{t['linea']}\n"
+            mensaje_final += "\n"
     except Exception as e:
-        error_msg = f"❌ Error extrayendo datos de Adif: {e}"
-        print(error_msg)
-        bot.broadcast(error_msg)
+        mensaje_final += f"❌ Error extrayendo Cercanías: {e}\n\n"
+
+    # 2. Autobuses Interurbanos
+    try:
+        b = Buses()
+        paradas_config = [
+            {"id": "12910", "nombre": "Colegio FGL", "limite": 3},
+            {"id": "17699", "nombre": "Farmacia Rotonda FGL", "limite": 5},
+            {"id": "07305", "nombre": "Estación sentido Madrid", "limite": 7}
+        ]
+        
+        for parada in paradas_config:
+            id_parada = parada["id"]
+            nombre = parada["nombre"]
+            limite = parada["limite"]
+            
+            tiempos_buses = b.obtener_tiempos_parada(id_parada)
+            
+            mensaje_final += f"🚌 *Buses - {nombre} (Parada {id_parada}):*\n"
+            if not tiempos_buses:
+                mensaje_final += "No hay buses próximos.\n\n"
+            else:
+                for t in tiempos_buses[:limite]:
+                    tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
+                    mensaje_final += f"• {t['hora_llegada']} - {tiempo} - {t['linea']} ({t['destino']})\n"
+                mensaje_final += "\n"
+    except Exception as e:
+        mensaje_final += f"❌ Error extrayendo Autobuses: {e}"
+        
+    bot.broadcast(mensaje_final.strip())
+    print("Broadcast completado exitosamente.")
