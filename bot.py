@@ -219,11 +219,13 @@ if __name__ == "__main__":
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Autobuses: {e}"
         
-    header_mejores = "🏆 *LAS DOS MEJORES OPCIONES:*\n\n"
+    header_mejores = "🏆 *LAS TRES MEJORES OPCIONES:*\n\n"
     if todas_opciones:
         todas_opciones.sort(key=lambda x: x["llegada"])
-        for idx, opc in enumerate(todas_opciones[:2], 1):
-            emoji = "🥇" if idx == 1 else "🥈"
+        for idx, opc in enumerate(todas_opciones[:3], 1):
+            if idx == 1: emoji = "🥇"
+            elif idx == 2: emoji = "🥈"
+            else: emoji = "🥉"
             llegada_str = opc["llegada"].strftime('%H:%M')
             header_mejores += f"{emoji} *{opc['tipo']}* (Sale en {opc['tiempo_salida_str']} ➔ Llega a las {llegada_str})\n"
             
