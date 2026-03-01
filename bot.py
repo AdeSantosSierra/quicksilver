@@ -3,6 +3,7 @@ import json
 import logging
 import requests
 import datetime
+import copy
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
@@ -127,6 +128,12 @@ if __name__ == "__main__":
                     llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_tren_suanzes)
                     texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
                     
+                    detalles_reales = copy.deepcopy(detalles_tren)
+                    for d in detalles_reales:
+                        if d["modo"] == "TRANSIT":
+                            d["linea"] = t['linea']
+                            break
+                            
                     todas_opciones.append({
                         "tipo": "🚆 Cercanías",
                         "llegada": llegada_dt,
@@ -134,7 +141,7 @@ if __name__ == "__main__":
                         "min_restantes": t['minutos_restantes'],
                         "linea": t['linea'],
                         "tiempo_trayecto": tiempo_tren_suanzes,
-                        "detalles": detalles_tren,
+                        "detalles": detalles_reales,
                         "hora_original": t['hora_original']
                     })
                     
@@ -179,6 +186,12 @@ if __name__ == "__main__":
                         llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_viaje_bus)
                         texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
                         
+                        detalles_reales = copy.deepcopy(detalles_bus)
+                        for d in detalles_reales:
+                            if d["modo"] == "TRANSIT":
+                                d["linea"] = t['linea']
+                                break
+                                
                         todas_opciones.append({
                             "tipo": f"🚌 {nombre}",
                             "llegada": llegada_dt,
@@ -186,7 +199,7 @@ if __name__ == "__main__":
                             "min_restantes": t['minutos_restantes'],
                             "linea": t['linea'],
                             "tiempo_trayecto": tiempo_viaje_bus,
-                            "detalles": detalles_bus,
+                            "detalles": detalles_reales,
                             "hora_original": t['hora_llegada']
                         })
                         
