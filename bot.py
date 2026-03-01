@@ -89,7 +89,8 @@ if __name__ == "__main__":
         exit(0)
     
     print("Extrayendo datos de la web de Adif y CRTM...")
-    mensaje_final = ""
+    bloque_transportes = ""
+    todas_opciones = []
     
     rg = RutasGoogle()
     ahora = datetime.datetime.now()
@@ -110,13 +111,14 @@ if __name__ == "__main__":
         tiempo_tren_suanzes_dict = rg.obtener_tiempo_transito_neto("estacion")
         tiempo_tren_suanzes = tiempo_tren_suanzes_dict.get("tiempo", "")
         ruta_tren_suanzes = tiempo_tren_suanzes_dict.get("ruta", "")
+        detalles_tren = tiempo_tren_suanzes_dict.get("detalles", [])
         minutos_tren_suanzes = extraer_minutos(tiempo_tren_suanzes)
         texto_viaje_tren = f"(~{tiempo_tren_suanzes} a Suanzes | 🗺️ {ruta_tren_suanzes})" if tiempo_tren_suanzes else ""
         
         if not trenes:
-            mensaje_final += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
+            bloque_transportes += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
         else:
-            mensaje_final += f"🚆 *Cercanías destino Madrid {texto_viaje_tren}:*\n"
+            bloque_transportes += f"🚆 *Cercanías destino Madrid {texto_viaje_tren}:*\n"
             for t in trenes[:3]:
                 tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
                 
@@ -125,10 +127,21 @@ if __name__ == "__main__":
                     llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_tren_suanzes)
                     texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
                     
-                mensaje_final += f"• {t['hora_original']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
-            mensaje_final += "\n"
+                    todas_opciones.append({
+                        "tipo": "🚆 Cercanías",
+                        "llegada": llegada_dt,
+                        "tiempo_salida_str": tiempo,
+                        "min_restantes": t['minutos_restantes'],
+                        "linea": t['linea'],
+                        "tiempo_trayecto": tiempo_tren_suanzes,
+                        "detalles": detalles_tren,
+                        "hora_original": t['hora_original']
+                    })
+                    
+                bloque_transportes += f"• {t['hora_original']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
+            bloque_transportes += "\n"
     except Exception as e:
-        mensaje_final += f"❌ Error extrayendo Cercanías: {e}\n\n"
+        bloque_transportes += f"❌ Error extrayendo Cercanías: {e}\n\n"
 
     # 2. Autobuses Interurbanos
     try:
@@ -151,12 +164,13 @@ if __name__ == "__main__":
             tiempo_viaje_bus_dict = rg.obtener_tiempo_transito_neto(id_parada)
             tiempo_viaje_bus = tiempo_viaje_bus_dict.get("tiempo", "")
             ruta_viaje_bus = tiempo_viaje_bus_dict.get("ruta", "")
+            detalles_bus = tiempo_viaje_bus_dict.get("detalles", [])
             minutos_viaje_bus = extraer_minutos(tiempo_viaje_bus)
             texto_viaje_bus = f"(~{tiempo_viaje_bus} a Suanzes | 🗺️ {ruta_viaje_bus})" if tiempo_viaje_bus else ""
             
-            mensaje_final += f"🚌 *Buses - {nombre} {texto_viaje_bus}:*\n"
+            bloque_transportes += f"🚌 *Buses - {nombre} {texto_viaje_bus}:*\n"
             if not tiempos_buses:
-                mensaje_final += "No hay buses próximos.\n\n"
+                bloque_transportes += "No hay buses próximos.\n\n"
             else:
                 for t in tiempos_buses[:limite]:
                     tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
@@ -166,10 +180,40 @@ if __name__ == "__main__":
                         llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_viaje_bus)
                         texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
                         
-                    mensaje_final += f"• {t['hora_llegada']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
-                mensaje_final += "\n"
+                        todas_opciones.append({
+                            "tipo": f"🚌 {nombre}",
+                            "llegada": llegada_dt,
+                            "tiempo_salida_str": tiempo,
+                            "min_restantes": t['minutos_restantes'],
+                            "linea": t['linea'],
+                            "tiempo_trayecto": tiempo_viaje_bus,
+                            "detalles": detalles_bus,
+                            "hora_original": t['hora_llegada']
+                        })
+                        
+                    bloque_transportes += f"• {t['hora_llegada']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
+                bloque_transportes += "\n"
     except Exception as e:
-        mensaje_final += f"❌ Error extrayendo Autobuses: {e}"
+        bloque_transportes += f"❌ Error extrayendo Autobuses: {e}"
         
+    header_mejores = "🏆 *LAS DOS MEJORES OPCIONES:*\n\n"
+    if todas_opciones:
+        todas_opciones.sort(key=lambda x: x["llegada"])
+        for idx, opc in enumerate(todas_opciones[:2], 1):
+            emoji = "🥇" if idx == 1 else "🥈"
+            llegada_str = opc["llegada"].strftime('%H:%M')
+            header_mejores += f"{emoji} *{opc['tipo']}* (Sale en {opc['tiempo_salida_str']} ➔ Llega a las {llegada_str})\n"
+            
+            for d in opc["detalles"]:
+                if d["modo"] == "TRANSIT":
+                    header_mejores += f"   - {d['duracion']} min - {d['linea']} ({d['origen']} ➔ {d['destino']})\n"
+                elif d["modo"] == "WALK" and d["duracion"] > 0:
+                    header_mejores += f"   - 🚶‍♂️ {d['duracion']} min - {d['instruccion']}\n"
+            header_mejores += "\n"
+    else:
+         header_mejores += "No hay opciones de viaje disponibles.\n\n"
+         
+    mensaje_final = header_mejores + "---\n\n" + bloque_transportes
+
     bot.broadcast(mensaje_final.strip())
     print("Broadcast completado exitosamente.")

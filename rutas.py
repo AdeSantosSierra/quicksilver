@@ -60,6 +60,8 @@ class RutasGoogle:
             walk_seconds_after = 0
             
             ruta_steps = []
+            detalles_pasos = []
+            en_ruta = False
             
             for step in steps:
                 mode = step.get("travelMode")
@@ -69,7 +71,11 @@ class RutasGoogle:
                 dep_time_str = stop_details.get("departureTime") or transit_details.get("departureTime")
                 arr_time_str = stop_details.get("arrivalTime") or transit_details.get("arrivalTime")
 
+                step_dur_str = step.get("duration") or step.get("staticDuration", "0s")
+                step_min = int(int(step_dur_str[:-1]) / 60) if step_dur_str.endswith("s") else 0
+
                 if mode == "TRANSIT":
+                    en_ruta = True
                     if first_departure is None and dep_time_str:
                         first_departure = dep_time_str
                     if arr_time_str:
@@ -79,22 +85,40 @@ class RutasGoogle:
                     # Store route lines
                     line = transit_details.get("transitLine", {})
                     short_name = line.get("nameShort", "")
+                    name = line.get("name", "")
+                    veh_type = line.get("vehicle", {}).get("type", "")
+                    
                     if short_name:
-                        # Sometimes subway lines are just "3" or "5", let's prefix subway with L if it's a number
-                        veh_type = line.get("vehicle", {}).get("type", "")
                         if veh_type == "SUBWAY" and short_name.isdigit():
-                            ruta_steps.append(f"L{short_name}")
+                            linea_act = f"L{short_name}"
                         else:
-                            ruta_steps.append(short_name)
+                            linea_act = short_name
                     else:
-                        name = line.get("name", "")
-                        ruta_steps.append(name.split('-')[0].strip())
+                        linea_act = name.split('-')[0].strip()
+                        
+                    ruta_steps.append(linea_act)
+                    
+                    stop_arr = stop_details.get("arrivalStop", {}).get("name", "Destino")
+                    stop_dep = stop_details.get("departureStop", {}).get("name", "Origen")
+                    
+                    detalles_pasos.append({
+                        "modo": "TRANSIT",
+                        "linea": linea_act,
+                        "origen": stop_dep,
+                        "destino": stop_arr,
+                        "duracion": step_min
+                    })
                         
                 elif mode == "WALK":
-                    if first_departure is not None:
-                        d_str = step.get("duration") or step.get("staticDuration", "0s")
-                        if d_str.endswith("s"):
-                            walk_seconds_after += int(d_str[:-1])
+                    if en_ruta:
+                        if d_str := step.get("duration") or step.get("staticDuration", "0s"):
+                            if d_str.endswith("s"):
+                                walk_seconds_after += int(d_str[:-1])
+                        detalles_pasos.append({
+                            "modo": "WALK",
+                            "duracion": step_min,
+                            "instruccion": "Transbordo / Andar"
+                        })
             
             if first_departure and last_arrival:
                 fmt = "%Y-%m-%dT%H:%M:%SZ"
@@ -106,7 +130,7 @@ class RutasGoogle:
                 
                 minutos = int(total_travel_seconds / 60)
                 ruta_str = " ➔ ".join(ruta_steps)
-                return {"tiempo": f"{minutos} min", "ruta": ruta_str}
+                return {"tiempo": f"{minutos} min", "ruta": ruta_str, "detalles": detalles_pasos}
                 
             return {"tiempo": "", "ruta": ""}
                 
