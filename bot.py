@@ -144,7 +144,7 @@ if __name__ == "__main__":
             ruta_str_resumen = fallback_ruta.get("ruta", "")
             
             if tiempo_header:
-                bloque_transportes += f"🚆 *Cercanías (~{tiempo_header})*\n"
+                bloque_transportes += f"🚆 *Cercanías*\n⏱️ ~{tiempo_header}\n"
             else:
                 bloque_transportes += f"🚆 *Cercanías*\n"
             
@@ -174,6 +174,7 @@ if __name__ == "__main__":
                         "tiempo_salida_str": tiempo,
                         "min_restantes": t['minutos_restantes'],
                         "linea": linea_tren,
+                        "anden": t.get('anden', ''),
                         "tiempo_trayecto": tiempo_ruta,
                         "detalles": detalles_ruta,
                         "hora_original": t['hora_original']
@@ -206,9 +207,9 @@ if __name__ == "__main__":
             ruta_viaje_bus = tiempo_viaje_bus_dict.get("ruta", "")
             detalles_bus = tiempo_viaje_bus_dict.get("detalles", [])
             minutos_viaje_bus = extraer_minutos(tiempo_viaje_bus)
-            texto_viaje_bus = f"(~{tiempo_viaje_bus})" if tiempo_viaje_bus else ""
+            texto_viaje_bus = f"\n⏱️ ~{tiempo_viaje_bus}" if tiempo_viaje_bus else ""
             
-            bloque_transportes += f"🚌 *{nombre} {texto_viaje_bus}*\n"
+            bloque_transportes += f"🚌 *{nombre}*{texto_viaje_bus}\n"
                 
             if not tiempos_buses:
                 bloque_transportes += "No hay buses próximos.\n\n"
@@ -251,10 +252,18 @@ if __name__ == "__main__":
             elif idx == 2: emoji = "🥈"
             else: emoji = "🥉"
             llegada_str = opc["llegada"].strftime('%H:%M')
-            header_mejores += f"{emoji} *{opc['tipo']}*\n"
+            
+            # Format title
+            if "Cercanías" in opc['tipo'] and opc.get('anden'):
+                titulo = f"{opc['tipo']} ({opc['linea']} - A{opc['anden']})"
+            else:
+                titulo = opc['tipo']
+                
+            header_mejores += f"{emoji} *{titulo}*\n"
             
             salida_formato = opc['tiempo_salida_str'].replace(" min", "m")
-            header_mejores += f"⏳ Sale en: {salida_formato}\n"
+            hora_salida = opc['hora_original']
+            header_mejores += f"⏳ Sale en: {hora_salida} (⏱️ {salida_formato})\n"
             header_mejores += f"🏁 Llega a: {llegada_str} (⏱️ {opc['tiempo_trayecto']})\n"
             
             for d in opc["detalles"]:
