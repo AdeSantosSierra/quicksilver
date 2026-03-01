@@ -109,7 +109,7 @@ if __name__ == "__main__":
         reemplazos = {
             "Majadahonda": "Maj.",
             "Intercambiador Moncloa": "Moncloa",
-            "Principe Pio": "P.Pio",
+            "Principe Pio": "PPio",
             "J.Rodrigo-Hospital Puerta de Hierro": "Pta. Hierro",
             "Escuela Universitaria de Estadistica": "Esc. Estadistica",
             "Estación de Tren Cercanías": "Cercanías",
@@ -144,9 +144,6 @@ if __name__ == "__main__":
                 bloque_transportes += f"🚆 *Cercanías (~{tiempo_header})*\n"
             else:
                 bloque_transportes += f"🚆 *Cercanías*\n"
-                
-            if ruta_str_resumen:
-                bloque_transportes += f"🗺️ {ruta_str_resumen}\n"
             
             for t in trenes[:3]:
                 linea_tren = t['linea']
@@ -209,8 +206,6 @@ if __name__ == "__main__":
             texto_viaje_bus = f"(~{tiempo_viaje_bus})" if tiempo_viaje_bus else ""
             
             bloque_transportes += f"🚌 *{nombre} {texto_viaje_bus}*\n"
-            if ruta_viaje_bus:
-                bloque_transportes += f"🗺️ {ruta_viaje_bus}\n"
                 
             if not tiempos_buses:
                 bloque_transportes += "No hay buses próximos.\n\n"
