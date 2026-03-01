@@ -185,7 +185,7 @@ if __name__ == "__main__":
             minutos_viaje_bus = extraer_minutos(tiempo_viaje_bus)
             texto_viaje_bus = f"(~{tiempo_viaje_bus} a Suanzes | 🗺️ {ruta_viaje_bus})" if tiempo_viaje_bus else ""
             
-            bloque_transportes += f"🚌 *Buses - {nombre} {texto_viaje_bus}:*\n"
+            bloque_transportes += f"🚌 *{nombre} {texto_viaje_bus}:*\n"
             if not tiempos_buses:
                 bloque_transportes += "No hay buses próximos.\n\n"
             else:
@@ -227,7 +227,7 @@ if __name__ == "__main__":
             elif idx == 2: emoji = "🥈"
             else: emoji = "🥉"
             llegada_str = opc["llegada"].strftime('%H:%M')
-            header_mejores += f"{emoji} *{opc['tipo']}* (Sale en {opc['tiempo_salida_str']} ➔ Llega a las {llegada_str})\n"
+            header_mejores += f"{emoji} *{opc['tipo']}* (Sale en {opc['tiempo_salida_str']} ➔ Llega a las {llegada_str} | ⏱️ {opc['tiempo_trayecto']})\n"
             
             for d in opc["detalles"]:
                 if d["modo"] == "TRANSIT":
