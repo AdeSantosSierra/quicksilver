@@ -103,6 +103,24 @@ if __name__ == "__main__":
             except ValueError:
                 return 0
         return 0
+
+    def abreviar(texto):
+        if not texto: return ""
+        reemplazos = {
+            "Majadahonda": "Maj.",
+            "Intercambiador Moncloa": "Moncloa",
+            "Principe Pio": "P.Pio",
+            "J.Rodrigo-Hospital Puerta de Hierro": "Pta. Hierro",
+            "Escuela Universitaria de Estadistica": "Esc. Estadistica",
+            "Estación de Tren Cercanías": "Cercanías",
+            "Transbordo / Andar": "Andar"
+        }
+        for k, v in reemplazos.items():
+            texto = texto.replace(k, v)
+        # Recortar textos inútilmente largos de Google como "Villalba -Aeropuerto-T4"
+        if "-" in texto and len(texto) > 20: 
+            texto = texto.split("-")[0].strip()
+        return texto
     
     # 1. Trenes de Cercanías
     try:
@@ -120,14 +138,19 @@ if __name__ == "__main__":
             
             # Formateamos cabecera basándonos en la primera ruta si es posible
             tiempo_header = fallback_ruta.get("tiempo", "")
+            ruta_str_resumen = fallback_ruta.get("ruta", "")
+            
             if tiempo_header:
-                bloque_transportes += f"🚆 *Cercanías destino Madrid (~{tiempo_header} a Suanzes):*\n"
+                bloque_transportes += f"🚆 *Cercanías (~{tiempo_header})*\n"
             else:
-                bloque_transportes += f"🚆 *Cercanías destino Madrid:*\n"
+                bloque_transportes += f"🚆 *Cercanías*\n"
+                
+            if ruta_str_resumen:
+                bloque_transportes += f"🗺️ {ruta_str_resumen}\n"
             
             for t in trenes[:3]:
                 linea_tren = t['linea']
-                tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
+                tiempo = f"{t['minutos_restantes']}m" if t['minutos_restantes'] > 0 else "Ahora"
                 
                 # Fetch route specifics for this exact train line
                 if isinstance(rutas_trenes_mapa, dict):
@@ -143,7 +166,7 @@ if __name__ == "__main__":
                 texto_llegada_suanzes = ""
                 if minutos_ruta > 0 and t['minutos_restantes'] >= 0:
                     llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_ruta)
-                    texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
+                    texto_llegada_suanzes = f" ➔ Llega {llegada_dt.strftime('%H:%M')}"
                     
                     todas_opciones.append({
                         "tipo": "🚆 Cercanías",
@@ -156,7 +179,7 @@ if __name__ == "__main__":
                         "hora_original": t['hora_original']
                     })
                     
-                bloque_transportes += f"• {t['hora_original']} - {tiempo} - {linea_tren}{texto_llegada_suanzes} (🗺️ {ruta_str})\n"
+                bloque_transportes += f"• {t['hora_original']} ({tiempo}) - {linea_tren}{texto_llegada_suanzes}\n"
             bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Cercanías: {e}\n\n"
@@ -183,19 +206,22 @@ if __name__ == "__main__":
             ruta_viaje_bus = tiempo_viaje_bus_dict.get("ruta", "")
             detalles_bus = tiempo_viaje_bus_dict.get("detalles", [])
             minutos_viaje_bus = extraer_minutos(tiempo_viaje_bus)
-            texto_viaje_bus = f"(~{tiempo_viaje_bus} a Suanzes | 🗺️ {ruta_viaje_bus})" if tiempo_viaje_bus else ""
+            texto_viaje_bus = f"(~{tiempo_viaje_bus})" if tiempo_viaje_bus else ""
             
-            bloque_transportes += f"🚌 *{nombre} {texto_viaje_bus}:*\n"
+            bloque_transportes += f"🚌 *{nombre} {texto_viaje_bus}*\n"
+            if ruta_viaje_bus:
+                bloque_transportes += f"🗺️ {ruta_viaje_bus}\n"
+                
             if not tiempos_buses:
                 bloque_transportes += "No hay buses próximos.\n\n"
             else:
                 for t in tiempos_buses[:limite]:
-                    tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
+                    tiempo = f"{t['minutos_restantes']}m" if t['minutos_restantes'] > 0 else "Ahora"
                     
                     texto_llegada_suanzes = ""
                     if minutos_viaje_bus > 0 and t['minutos_restantes'] >= 0:
                         llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_viaje_bus)
-                        texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
+                        texto_llegada_suanzes = f" ➔ Llega {llegada_dt.strftime('%H:%M')}"
                         
                         detalles_reales = copy.deepcopy(detalles_bus)
                         for d in detalles_reales:
@@ -214,7 +240,7 @@ if __name__ == "__main__":
                             "hora_original": t['hora_llegada']
                         })
                         
-                    bloque_transportes += f"• {t['hora_llegada']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
+                    bloque_transportes += f"• {t['hora_llegada']} ({tiempo}) - {t['linea']}{texto_llegada_suanzes}\n"
                 bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Autobuses: {e}"
@@ -227,13 +253,20 @@ if __name__ == "__main__":
             elif idx == 2: emoji = "🥈"
             else: emoji = "🥉"
             llegada_str = opc["llegada"].strftime('%H:%M')
-            header_mejores += f"{emoji} *{opc['tipo']}* (Sale en {opc['tiempo_salida_str']} ➔ Llega a las {llegada_str} | ⏱️ {opc['tiempo_trayecto']})\n"
+            header_mejores += f"{emoji} *{opc['tipo']}*\n"
+            
+            salida_formato = opc['tiempo_salida_str'].replace(" min", "m")
+            header_mejores += f"⏳ Sale en: {salida_formato}\n"
+            header_mejores += f"🏁 Llega a: {llegada_str} (⏱️ {opc['tiempo_trayecto']})\n"
             
             for d in opc["detalles"]:
                 if d["modo"] == "TRANSIT":
-                    header_mejores += f"   - {d['duracion']} min - {d['linea']} ({d['origen']} ➔ {d['destino']})\n"
+                    o_abrv = abreviar(d['origen'])
+                    d_abrv = abreviar(d['destino'])
+                    header_mejores += f"  ↓ {d['duracion']}m • {d['linea']} ({o_abrv} ➔ {d_abrv})\n"
                 elif d["modo"] == "WALK" and d["duracion"] > 0:
-                    header_mejores += f"   - 🚶‍♂️ {d['duracion']} min - {d['instruccion']}\n"
+                    instr_abrv = abreviar(d['instruccion'])
+                    header_mejores += f"  🚶 {d['duracion']}m • {instr_abrv}\n"
             header_mejores += "\n"
     else:
          header_mejores += "No hay opciones de viaje disponibles.\n\n"
