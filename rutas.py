@@ -10,13 +10,14 @@ class RutasGoogle:
         self.base_url = "https://routes.googleapis.com/directions/v2:computeRoutes"
         self.destino_default = "Metro Suanzes, Madrid"
 
-    def obtener_tiempo_transito_neto(self, id_parada: str) -> str:
+    def obtener_tiempo_transito_neto(self, id_parada: str) -> dict:
         """
         Calcula el tiempo neto desde que el cliente se monta en el transporte en `id_parada`
         hasta el destino (Metro Suanzes).
+        Devuelve un diccionario con el tiempo y la ruta a seguir.
         """
         if not self.api_key or self.api_key == "AQUI_TU_API_KEY":
-            return ""
+            return {"tiempo": "", "ruta": ""}
         
         headers = {
             "Content-Type": "application/json",
@@ -50,13 +51,15 @@ class RutasGoogle:
             data = res.json()
             
             if not data or not data.get("routes"):
-                return ""
+                return {"tiempo": "", "ruta": ""}
             
             steps = data["routes"][0].get("legs", [{}])[0].get("steps", [])
             
             first_departure = None
             last_arrival = None
             walk_seconds_after = 0
+            
+            ruta_steps = []
             
             for step in steps:
                 mode = step.get("travelMode")
@@ -72,6 +75,21 @@ class RutasGoogle:
                     if arr_time_str:
                         last_arrival = arr_time_str
                     walk_seconds_after = 0
+                    
+                    # Store route lines
+                    line = transit_details.get("transitLine", {})
+                    short_name = line.get("nameShort", "")
+                    if short_name:
+                        # Sometimes subway lines are just "3" or "5", let's prefix subway with L if it's a number
+                        veh_type = line.get("vehicle", {}).get("type", "")
+                        if veh_type == "SUBWAY" and short_name.isdigit():
+                            ruta_steps.append(f"L{short_name}")
+                        else:
+                            ruta_steps.append(short_name)
+                    else:
+                        name = line.get("name", "")
+                        ruta_steps.append(name.split('-')[0].strip())
+                        
                 elif mode == "WALK":
                     if first_departure is not None:
                         d_str = step.get("duration") or step.get("staticDuration", "0s")
@@ -87,13 +105,14 @@ class RutasGoogle:
                 total_travel_seconds = diff_seconds + walk_seconds_after
                 
                 minutos = int(total_travel_seconds / 60)
-                return f"{minutos} min"
+                ruta_str = " ➔ ".join(ruta_steps)
+                return {"tiempo": f"{minutos} min", "ruta": ruta_str}
                 
-            return ""
+            return {"tiempo": "", "ruta": ""}
                 
         except Exception as e:
             print(f"Error google API en {id_parada}: {e}")
-            return ""
+            return {"tiempo": "", "ruta": ""}
 
 if __name__ == "__main__":
     rg = RutasGoogle()

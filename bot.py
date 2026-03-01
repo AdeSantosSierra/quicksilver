@@ -107,15 +107,17 @@ if __name__ == "__main__":
         c = Cercanias()
         trenes = c.obtener_proximos_trenes_madrid()
         
-        tiempo_tren_suanzes = rg.obtener_tiempo_transito_neto("estacion")
+        tiempo_tren_suanzes_dict = rg.obtener_tiempo_transito_neto("estacion")
+        tiempo_tren_suanzes = tiempo_tren_suanzes_dict.get("tiempo", "")
+        ruta_tren_suanzes = tiempo_tren_suanzes_dict.get("ruta", "")
         minutos_tren_suanzes = extraer_minutos(tiempo_tren_suanzes)
-        texto_viaje_tren = f"(~{tiempo_tren_suanzes} de trayecto a Suanzes)" if tiempo_tren_suanzes else ""
+        texto_viaje_tren = f"(~{tiempo_tren_suanzes} a Suanzes | 🗺️ {ruta_tren_suanzes})" if tiempo_tren_suanzes else ""
         
         if not trenes:
             mensaje_final += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
         else:
             mensaje_final += f"🚆 *Cercanías destino Madrid {texto_viaje_tren}:*\n"
-            for t in trenes[:5]:
+            for t in trenes[:3]:
                 tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
                 
                 texto_llegada_suanzes = ""
@@ -134,8 +136,8 @@ if __name__ == "__main__":
         
         paradas_config = [
             {"id": "12910", "nombre": "Colegio FGL", "limite": 3},
-            {"id": "17699", "nombre": "Farmacia Rotonda FGL", "limite": 5},
-            {"id": "07305", "nombre": "Estación sentido Madrid", "limite": 7}
+            {"id": "17699", "nombre": "Farmacia Rotonda FGL", "limite": 3},
+            {"id": "07305", "nombre": "Estación sentido Madrid", "limite": 3}
         ]
         
         for parada in paradas_config:
@@ -146,9 +148,11 @@ if __name__ == "__main__":
             tiempos_buses = b.obtener_tiempos_parada(id_parada)
             
             # Extraer tiempo neto de viaje (sin el transbordo inicial), usando su ID de parada
-            tiempo_viaje_bus = rg.obtener_tiempo_transito_neto(id_parada)
+            tiempo_viaje_bus_dict = rg.obtener_tiempo_transito_neto(id_parada)
+            tiempo_viaje_bus = tiempo_viaje_bus_dict.get("tiempo", "")
+            ruta_viaje_bus = tiempo_viaje_bus_dict.get("ruta", "")
             minutos_viaje_bus = extraer_minutos(tiempo_viaje_bus)
-            texto_viaje_bus = f"(~{tiempo_viaje_bus} de trayecto a Suanzes)" if tiempo_viaje_bus else ""
+            texto_viaje_bus = f"(~{tiempo_viaje_bus} a Suanzes | 🗺️ {ruta_viaje_bus})" if tiempo_viaje_bus else ""
             
             mensaje_final += f"🚌 *Buses - {nombre} {texto_viaje_bus}:*\n"
             if not tiempos_buses:
