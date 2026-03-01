@@ -1,4 +1,5 @@
 import requests
+import time
 from datetime import datetime
 from typing import List, Dict, Union
 
@@ -51,43 +52,52 @@ class Buses:
         url = f"{self.base_url}/GetStopsTimes.php?codStop={cod_parada}&type=0&orderBy=2&stopTimesByIti="
         resultados = []
         
-        try:
-            res = requests.get(url, timeout=10)
-            res.raise_for_status()
-            data = res.json()
-            
-            tiempos_list = data.get("stopTimes", {}).get("times", {}).get("Time", [])
-            
-            # En caso de venir vacío o no ser lista
-            if not tiempos_list:
+        data = {}
+        for intento in range(4):
+            try:
+                res = requests.get(url, timeout=10)
+                res.raise_for_status()
+                data = res.json()
+                break
+            except requests.exceptions.Timeout:
+                # Si agota el intento 3 (cuarto intento), se rinde
+                if intento == 3:
+                    print(f"Timeout CRTM API para la parada {cod_parada} tras 4 intentos.")
+                    return resultados
+                time.sleep(2)
+            except Exception as e:
+                print(f"Error obteniendo tiempos de parada {cod_parada}: {e}")
                 return resultados
                 
-            if not isinstance(tiempos_list, list):
-                tiempos_list = [tiempos_list]
-                
-            for t in tiempos_list:
-                linea_info = t.get("line", {})
-                nombre_linea = linea_info.get("shortDescription", "Desconocida")
-                destino = t.get("destination", "Destino Desconocido")
-                
-                # 'time' trae la hora estimada de llegada
-                time_iso = t.get("time")
-                min_restantes = self._calcular_tiempo_restante(time_iso)
-                
-                if min_restantes >= 0:
-                    resultados.append({
-                        "linea": nombre_linea,
-                        "destino": destino,
-                        "minutos_restantes": min_restantes,
-                        "hora_llegada": time_iso.split("T")[1][:5] if time_iso and "T" in time_iso else "??"
-                    })
-                    
-            # API can return unsorted by time sometimes, ensure sorted:
-            resultados.sort(key=lambda x: x["minutos_restantes"])
+        tiempos_list = data.get("stopTimes", {}).get("times", {}).get("Time", [])
+        
+        # En caso de venir vacío o no ser lista
+        if not tiempos_list:
             return resultados
-        except Exception as e:
-            print(f"Error obteniendo tiempos de parada {cod_parada}: {e}")
-            return resultados
+            
+        if not isinstance(tiempos_list, list):
+            tiempos_list = [tiempos_list]
+            
+        for t in tiempos_list:
+            linea_info = t.get("line", {})
+            nombre_linea = linea_info.get("shortDescription", "Desconocida")
+            destino = t.get("destination", "Destino Desconocido")
+            
+            # 'time' trae la hora estimada de llegada
+            time_iso = t.get("time")
+            min_restantes = self._calcular_tiempo_restante(time_iso)
+            
+            if min_restantes >= 0:
+                resultados.append({
+                    "linea": nombre_linea,
+                    "destino": destino,
+                    "minutos_restantes": min_restantes,
+                    "hora_llegada": time_iso.split("T")[1][:5] if time_iso and "T" in time_iso else "??"
+                })
+                
+        # API can return unsorted by time sometimes, ensure sorted:
+        resultados.sort(key=lambda x: x["minutos_restantes"])
+        return resultados
 
 if __name__ == "__main__":
     buses = Buses()

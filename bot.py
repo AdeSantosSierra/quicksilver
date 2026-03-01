@@ -148,7 +148,6 @@ if __name__ == "__main__":
         b = Buses()
         
         paradas_config = [
-            {"id": "12910", "nombre": "Colegio FGL", "limite": 3},
             {"id": "17699", "nombre": "Farmacia Rotonda FGL", "limite": 3},
             {"id": "07305", "nombre": "Estación sentido Madrid", "limite": 3}
         ]
