@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import requests
+import datetime
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
@@ -91,6 +92,15 @@ if __name__ == "__main__":
     mensaje_final = ""
     
     rg = RutasGoogle()
+    ahora = datetime.datetime.now()
+    
+    def extraer_minutos(texto):
+        if texto and "min" in texto:
+            try:
+                return int(texto.split()[0])
+            except ValueError:
+                return 0
+        return 0
     
     # 1. Trenes de Cercanías
     try:
@@ -98,7 +108,8 @@ if __name__ == "__main__":
         trenes = c.obtener_proximos_trenes_madrid()
         
         tiempo_tren_suanzes = rg.obtener_tiempo_transito_neto("estacion")
-        texto_viaje_tren = f"(~{tiempo_tren_suanzes} en llegar a Suanzes)" if tiempo_tren_suanzes else ""
+        minutos_tren_suanzes = extraer_minutos(tiempo_tren_suanzes)
+        texto_viaje_tren = f"(~{tiempo_tren_suanzes} de trayecto a Suanzes)" if tiempo_tren_suanzes else ""
         
         if not trenes:
             mensaje_final += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
@@ -106,7 +117,13 @@ if __name__ == "__main__":
             mensaje_final += f"🚆 *Cercanías destino Madrid {texto_viaje_tren}:*\n"
             for t in trenes[:5]:
                 tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
-                mensaje_final += f"• {t['hora_original']} - {tiempo} - {t['linea']}\n"
+                
+                texto_llegada_suanzes = ""
+                if minutos_tren_suanzes > 0 and t['minutos_restantes'] >= 0:
+                    llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_tren_suanzes)
+                    texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
+                    
+                mensaje_final += f"• {t['hora_original']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
             mensaje_final += "\n"
     except Exception as e:
         mensaje_final += f"❌ Error extrayendo Cercanías: {e}\n\n"
@@ -130,6 +147,7 @@ if __name__ == "__main__":
             
             # Extraer tiempo neto de viaje (sin el transbordo inicial), usando su ID de parada
             tiempo_viaje_bus = rg.obtener_tiempo_transito_neto(id_parada)
+            minutos_viaje_bus = extraer_minutos(tiempo_viaje_bus)
             texto_viaje_bus = f"(~{tiempo_viaje_bus} de trayecto a Suanzes)" if tiempo_viaje_bus else ""
             
             mensaje_final += f"🚌 *Buses - {nombre} {texto_viaje_bus}:*\n"
@@ -138,7 +156,13 @@ if __name__ == "__main__":
             else:
                 for t in tiempos_buses[:limite]:
                     tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
-                    mensaje_final += f"• {t['hora_llegada']} - {tiempo} - {t['linea']}\n"
+                    
+                    texto_llegada_suanzes = ""
+                    if minutos_viaje_bus > 0 and t['minutos_restantes'] >= 0:
+                        llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_viaje_bus)
+                        texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
+                        
+                    mensaje_final += f"• {t['hora_llegada']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
                 mensaje_final += "\n"
     except Exception as e:
         mensaje_final += f"❌ Error extrayendo Autobuses: {e}"
