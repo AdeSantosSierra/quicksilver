@@ -263,8 +263,8 @@ if __name__ == "__main__":
             
             salida_formato = opc['tiempo_salida_str'].replace(" min", "m")
             hora_salida = opc['hora_original']
-            header_mejores += f"⏳ Sale en: {hora_salida} (⏱️ {salida_formato})\n"
-            header_mejores += f"🏁 Llega a: {llegada_str} (⏱️ {opc['tiempo_trayecto']})\n"
+            header_mejores += f"⏳ Salida: {hora_salida} (⏱️ {salida_formato})\n"
+            header_mejores += f"🏁 Llegada: {llegada_str} (⏱️ {opc['tiempo_trayecto']})\n"
             
             for d in opc["detalles"]:
                 if d["modo"] == "TRANSIT":
