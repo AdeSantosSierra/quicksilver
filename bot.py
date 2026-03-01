@@ -109,43 +109,54 @@ if __name__ == "__main__":
         c = Cercanias()
         trenes = c.obtener_proximos_trenes_madrid()
         
-        tiempo_tren_suanzes_dict = rg.obtener_tiempo_transito_neto("estacion")
-        tiempo_tren_suanzes = tiempo_tren_suanzes_dict.get("tiempo", "")
-        ruta_tren_suanzes = tiempo_tren_suanzes_dict.get("ruta", "")
-        detalles_tren = tiempo_tren_suanzes_dict.get("detalles", [])
-        minutos_tren_suanzes = extraer_minutos(tiempo_tren_suanzes)
-        texto_viaje_tren = f"(~{tiempo_tren_suanzes} a Suanzes | 🗺️ {ruta_tren_suanzes})" if tiempo_tren_suanzes else ""
+        rutas_trenes_mapa = rg.obtener_tiempo_transito_neto("estacion")
         
+        # Determine the "general" line purely for the section header
         if not trenes:
             bloque_transportes += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
         else:
-            bloque_transportes += f"🚆 *Cercanías destino Madrid {texto_viaje_tren}:*\n"
+            # Pick a fallback route for the header
+            fallback_ruta = list(rutas_trenes_mapa.values())[0] if isinstance(rutas_trenes_mapa, dict) and rutas_trenes_mapa else {"tiempo": "", "ruta": ""}
+            
+            # Formateamos cabecera basándonos en la primera ruta si es posible
+            tiempo_header = fallback_ruta.get("tiempo", "")
+            if tiempo_header:
+                bloque_transportes += f"🚆 *Cercanías destino Madrid (~{tiempo_header} a Suanzes):*\n"
+            else:
+                bloque_transportes += f"🚆 *Cercanías destino Madrid:*\n"
+            
             for t in trenes[:3]:
+                linea_tren = t['linea']
                 tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
                 
+                # Fetch route specifics for this exact train line
+                if isinstance(rutas_trenes_mapa, dict):
+                    ruta_especifica = rutas_trenes_mapa.get(linea_tren, fallback_ruta)
+                else:
+                    ruta_especifica = fallback_ruta
+                    
+                tiempo_ruta = ruta_especifica.get("tiempo", "")
+                minutos_ruta = extraer_minutos(tiempo_ruta)
+                detalles_ruta = ruta_especifica.get("detalles", [])
+                ruta_str = ruta_especifica.get("ruta", "")
+                
                 texto_llegada_suanzes = ""
-                if minutos_tren_suanzes > 0 and t['minutos_restantes'] >= 0:
-                    llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_tren_suanzes)
+                if minutos_ruta > 0 and t['minutos_restantes'] >= 0:
+                    llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_ruta)
                     texto_llegada_suanzes = f" 🏁 Llega a las {llegada_dt.strftime('%H:%M')}"
                     
-                    detalles_reales = copy.deepcopy(detalles_tren)
-                    for d in detalles_reales:
-                        if d["modo"] == "TRANSIT":
-                            d["linea"] = t['linea']
-                            break
-                            
                     todas_opciones.append({
                         "tipo": "🚆 Cercanías",
                         "llegada": llegada_dt,
                         "tiempo_salida_str": tiempo,
                         "min_restantes": t['minutos_restantes'],
-                        "linea": t['linea'],
-                        "tiempo_trayecto": tiempo_tren_suanzes,
-                        "detalles": detalles_reales,
+                        "linea": linea_tren,
+                        "tiempo_trayecto": tiempo_ruta,
+                        "detalles": detalles_ruta,
                         "hora_original": t['hora_original']
                     })
                     
-                bloque_transportes += f"• {t['hora_original']} - {tiempo} - {t['linea']}{texto_llegada_suanzes}\n"
+                bloque_transportes += f"• {t['hora_original']} - {tiempo} - {linea_tren}{texto_llegada_suanzes} (🗺️ {ruta_str})\n"
             bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Cercanías: {e}\n\n"

@@ -42,6 +42,7 @@ class RutasGoogle:
             "transitPreferences": {
                 "allowedTravelModes": ["BUS", "SUBWAY", "TRAIN"]
             },
+            "computeAlternativeRoutes": True,
             "languageCode": "es-ES"
         }
         
@@ -50,89 +51,124 @@ class RutasGoogle:
             res.raise_for_status()
             data = res.json()
             
-            if not data or not data.get("routes"):
+            routes = data.get("routes", [])
+            if not routes:
                 return {"tiempo": "", "ruta": ""}
             
-            steps = data["routes"][0].get("legs", [{}])[0].get("steps", [])
-            
-            first_departure = None
-            last_arrival = None
-            walk_seconds_after = 0
-            
-            ruta_steps = []
-            detalles_pasos = []
-            en_ruta = False
-            
-            for step in steps:
-                mode = step.get("travelMode")
-                transit_details = step.get("transitDetails", {})
-                stop_details = transit_details.get("stopDetails", {})
+            # Function to parse a single route object into our dict format
+            def parse_route(r):
+                steps = r.get("legs", [{}])[0].get("steps", [])
                 
-                dep_time_str = stop_details.get("departureTime") or transit_details.get("departureTime")
-                arr_time_str = stop_details.get("arrivalTime") or transit_details.get("arrivalTime")
-
-                step_dur_str = step.get("duration") or step.get("staticDuration", "0s")
-                step_min = int(int(step_dur_str[:-1]) / 60) if step_dur_str.endswith("s") else 0
-
-                if mode == "TRANSIT":
-                    en_ruta = True
-                    if first_departure is None and dep_time_str:
-                        first_departure = dep_time_str
-                    if arr_time_str:
-                        last_arrival = arr_time_str
-                    walk_seconds_after = 0
+                first_departure = None
+                last_arrival = None
+                walk_seconds_after = 0
+                
+                ruta_steps = []
+                detalles_pasos = []
+                en_ruta = False
+                first_transit_line = None
+                
+                for step in steps:
+                    mode = step.get("travelMode")
+                    transit_details = step.get("transitDetails", {})
+                    stop_details = transit_details.get("stopDetails", {})
                     
-                    # Store route lines
-                    line = transit_details.get("transitLine", {})
-                    short_name = line.get("nameShort", "")
-                    name = line.get("name", "")
-                    veh_type = line.get("vehicle", {}).get("type", "")
-                    
-                    if short_name:
-                        if veh_type == "SUBWAY" and short_name.isdigit():
-                            linea_act = f"L{short_name}"
+                    dep_time_str = stop_details.get("departureTime") or transit_details.get("departureTime")
+                    arr_time_str = stop_details.get("arrivalTime") or transit_details.get("arrivalTime")
+
+                    step_dur_str = step.get("duration") or step.get("staticDuration", "0s")
+                    step_min = int(int(step_dur_str[:-1]) / 60) if step_dur_str.endswith("s") else 0
+
+                    if mode == "TRANSIT":
+                        en_ruta = True
+                        if first_departure is None and dep_time_str:
+                            first_departure = dep_time_str
+                        if arr_time_str:
+                            last_arrival = arr_time_str
+                        walk_seconds_after = 0
+                        
+                        # Store route lines
+                        line = transit_details.get("transitLine", {})
+                        short_name = line.get("nameShort", "")
+                        name = line.get("name", "")
+                        veh_type = line.get("vehicle", {}).get("type", "")
+                        
+                        if short_name:
+                            if veh_type == "SUBWAY" and short_name.isdigit():
+                                linea_act = f"L{short_name}"
+                            else:
+                                linea_act = short_name
                         else:
-                            linea_act = short_name
-                    else:
-                        linea_act = name.split('-')[0].strip()
+                            linea_act = name.split('-')[0].strip()
+                            
+                        if first_transit_line is None:
+                            first_transit_line = linea_act
+                            
+                        ruta_steps.append(linea_act)
                         
-                    ruta_steps.append(linea_act)
-                    
-                    stop_arr = stop_details.get("arrivalStop", {}).get("name", "Destino")
-                    stop_dep = stop_details.get("departureStop", {}).get("name", "Origen")
-                    
-                    detalles_pasos.append({
-                        "modo": "TRANSIT",
-                        "linea": linea_act,
-                        "origen": stop_dep,
-                        "destino": stop_arr,
-                        "duracion": step_min
-                    })
+                        stop_arr = stop_details.get("arrivalStop", {}).get("name", "Destino")
+                        stop_dep = stop_details.get("departureStop", {}).get("name", "Origen")
                         
-                elif mode == "WALK":
-                    if en_ruta:
-                        if d_str := step.get("duration") or step.get("staticDuration", "0s"):
-                            if d_str.endswith("s"):
-                                walk_seconds_after += int(d_str[:-1])
                         detalles_pasos.append({
-                            "modo": "WALK",
-                            "duracion": step_min,
-                            "instruccion": "Transbordo / Andar"
+                            "modo": "TRANSIT",
+                            "linea": linea_act,
+                            "origen": stop_dep,
+                            "destino": stop_arr,
+                            "duracion": step_min
                         })
+                            
+                    elif mode == "WALK":
+                        if en_ruta:
+                            if d_str := step.get("duration") or step.get("staticDuration", "0s"):
+                                if d_str.endswith("s"):
+                                    walk_seconds_after += int(d_str[:-1])
+                            detalles_pasos.append({
+                                "modo": "WALK",
+                                "duracion": step_min,
+                                "instruccion": "Transbordo / Andar"
+                            })
+                
+                if first_departure and last_arrival:
+                    fmt = "%Y-%m-%dT%H:%M:%SZ"
+                    t1 = datetime.datetime.strptime(first_departure, fmt)
+                    t2 = datetime.datetime.strptime(last_arrival, fmt)
+                    
+                    diff_seconds = (t2 - t1).total_seconds()
+                    total_travel_seconds = diff_seconds + walk_seconds_after
+                    minutos = int(total_travel_seconds / 60)
+                    ruta_str = " ➔ ".join(ruta_steps)
+                    return {"tiempo": f"{minutos} min", "ruta": ruta_str, "detalles": detalles_pasos, "linea_principal": first_transit_line}
+                    
+                return None
+
+            # Parse all alternative routes
+            parsed_routes = []
+            for r in routes:
+                pr = parse_route(r)
+                if pr:
+                    parsed_routes.append(pr)
             
-            if first_departure and last_arrival:
-                fmt = "%Y-%m-%dT%H:%M:%SZ"
-                t1 = datetime.datetime.strptime(first_departure, fmt)
-                t2 = datetime.datetime.strptime(last_arrival, fmt)
+            if not parsed_routes:
+                return {"tiempo": "", "ruta": ""}
                 
-                diff_seconds = (t2 - t1).total_seconds()
-                total_travel_seconds = diff_seconds + walk_seconds_after
-                
-                minutos = int(total_travel_seconds / 60)
-                ruta_str = " ➔ ".join(ruta_steps)
-                return {"tiempo": f"{minutos} min", "ruta": ruta_str, "detalles": detalles_pasos}
-                
-            return {"tiempo": "", "ruta": ""}
+            # If train station, return a dict mapping line names (e.g. "C10", "C7") to their best route
+            if "estacion" in str(id_parada).lower():
+                mapa_lineas = {}
+                for pr in parsed_routes:
+                    lin = pr["linea_principal"]
+                    if lin:
+                        # Only save the fastest one if there are duplicates for same line
+                        if lin not in mapa_lineas or int(pr["tiempo"].split()[0]) < int(mapa_lineas[lin]["tiempo"].split()[0]):
+                            mapa_lineas[lin] = pr
+                # Fallback to returning just the fastest overall if parsing failed
+                if not mapa_lineas:
+                    return parsed_routes[0]
+                return mapa_lineas
+            
+            # If it's a bus stop, just return the fastest overall route
+            parsed_routes.sort(key=lambda x: int(x["tiempo"].split()[0]))
+            return parsed_routes[0]
+            
                 
         except Exception as e:
             print(f"Error google API en {id_parada}: {e}")
