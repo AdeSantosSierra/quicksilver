@@ -90,15 +90,20 @@ if __name__ == "__main__":
     print("Extrayendo datos de la web de Adif y CRTM...")
     mensaje_final = ""
     
+    rg = RutasGoogle()
+    
     # 1. Trenes de Cercanías
     try:
         c = Cercanias()
         trenes = c.obtener_proximos_trenes_madrid()
         
+        tiempo_tren_suanzes = rg.obtener_tiempo_transito_neto("estacion")
+        texto_viaje_tren = f"(~{tiempo_tren_suanzes} en llegar a Suanzes)" if tiempo_tren_suanzes else ""
+        
         if not trenes:
             mensaje_final += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
         else:
-            mensaje_final += "🚆 *Cercanías destino Madrid:*\n"
+            mensaje_final += f"🚆 *Cercanías destino Madrid {texto_viaje_tren}:*\n"
             for t in trenes[:5]:
                 tiempo = f"{t['minutos_restantes']} min" if t['minutos_restantes'] > 0 else "Ahora"
                 mensaje_final += f"• {t['hora_original']} - {tiempo} - {t['linea']}\n"
@@ -109,7 +114,6 @@ if __name__ == "__main__":
     # 2. Autobuses Interurbanos
     try:
         b = Buses()
-        rg = RutasGoogle()
         
         paradas_config = [
             {"id": "12910", "nombre": "Colegio FGL", "limite": 3},
@@ -124,11 +128,11 @@ if __name__ == "__main__":
             
             tiempos_buses = b.obtener_tiempos_parada(id_parada)
             
-            # Extraer tiempo estimado desde este origen a Moncloa usando Google
-            tiempo_viaje = rg.obtener_tiempo_a_moncloa(nombre)
-            texto_viaje = f"(~{tiempo_viaje} a Moncloa)" if tiempo_viaje else ""
+            # Extraer tiempo neto de viaje (sin el transbordo inicial), usando su ID de parada
+            tiempo_viaje_bus = rg.obtener_tiempo_transito_neto(id_parada)
+            texto_viaje_bus = f"(~{tiempo_viaje_bus} de trayecto a Suanzes)" if tiempo_viaje_bus else ""
             
-            mensaje_final += f"🚌 *Buses - {nombre} {texto_viaje}:*\n"
+            mensaje_final += f"🚌 *Buses - {nombre} {texto_viaje_bus}:*\n"
             if not tiempos_buses:
                 mensaje_final += "No hay buses próximos.\n\n"
             else:
