@@ -195,7 +195,7 @@ if __name__ == "__main__":
         
         for parada in paradas_config:
             id_parada = parada["id"]
-            nombre = parada["nombre"]
+            nombre = f"{parada['nombre']} ({id_parada})"
             limite = parada["limite"]
             
             tiempos_buses = b.obtener_tiempos_parada(id_parada)
