@@ -68,22 +68,22 @@ class Cercanias:
                 page.goto(self.url, wait_until="networkidle", timeout=30000)
                 
                 # Esperar a que los elementos del horario estén visibles para mayor robustez
-                page.wait_for_selector("tr.horario-row.cercanias", state="visible", timeout=10000)
+                page.wait_for_selector("tr.horario-row.cercanias", state="attached", timeout=30000)
                 
                 # Extraer usando locators (traspasa Shadow DOM si lo hay)
                 rows = page.locator("tr.horario-row.cercanias").all()
                 
                 for row in rows:
                     try:
-                        hora = row.locator(".col-hora span").first.inner_text(timeout=1000).strip()
+                        hora = row.locator(".col-hora span").first.text_content(timeout=5000).strip()
                         destino_loc = row.locator(".col-destino a")
                         if destino_loc.count() > 0:
-                            destino = destino_loc.first.inner_text(timeout=100).strip()
+                            destino = destino_loc.first.text_content(timeout=5000).strip()
                         else:
-                            destino = row.locator(".col-destino").inner_text(timeout=100).strip()
+                            destino = row.locator(".col-destino").text_content(timeout=5000).strip()
                             
-                        linea = row.locator(".col-tren .lineColored").inner_text(timeout=1000).strip()
-                        via = row.locator(".col-via span").first.inner_text(timeout=1000).strip()
+                        linea = row.locator(".col-tren .lineColored").text_content(timeout=5000).strip()
+                        via = row.locator(".col-via span").first.text_content(timeout=5000).strip()
                         
                         min_restantes = self._calcular_tiempo_restante(hora)
                         
