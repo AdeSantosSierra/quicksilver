@@ -53,7 +53,7 @@ def create_collage(urls, output_path="dgt_collage.jpg"):
     # calculate grid size
     import math
     n = len(images)
-    cols = math.ceil(math.sqrt(n))
+    cols = 3
     rows = math.ceil(n / cols)
     
     # assuming uniform size based on first image after thumbnailing
