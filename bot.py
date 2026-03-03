@@ -3,7 +3,6 @@ import json
 import logging
 import requests
 import datetime
-import copy
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
@@ -62,6 +61,28 @@ class CorrecaminosBot:
         for chat_id in self.subscribers:
             self._send_message(chat_id, message)
 
+    def _send_image(self, chat_id: int, image_path: str, caption: str = ""):
+        url = f"{self.base_url}/sendPhoto"
+        try:
+            with open(image_path, "rb") as photo:
+                payload = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
+                files = {"photo": photo}
+                response = requests.post(url, data=payload, files=files).json()
+                if not response.get("ok"):
+                    logging.error(f"Fallo enviando foto a {chat_id}: {response}")
+        except Exception as e:
+            logging.error(f"Excepción enviando foto a {chat_id}: {e}")
+
+    def broadcast_image(self, image_path: str, caption: str = ""):
+        """Envía una imagen a todos los usuarios suscritos."""
+        if not self.subscribers:
+            logging.warning("No hay suscriptores para enviar el broadcast de imagen.")
+            return
+
+        logging.info(f"Haciendo broadcast de imagen a {len(self.subscribers)} usuario(s)...")
+        for chat_id in self.subscribers:
+            self._send_image(chat_id, image_path, caption)
+
     def _send_message(self, chat_id: int, text: str):
         url = f"{self.base_url}/sendMessage"
         payload = {
@@ -79,7 +100,7 @@ class CorrecaminosBot:
 if __name__ == "__main__":
     from cercanias import Cercanias
     from buses import Buses
-    from rutas import RutasGoogle
+    import dgt_cameras
     
     bot = CorrecaminosBot()
     print("Buscando nuevos usuarios...")
@@ -91,96 +112,27 @@ if __name__ == "__main__":
     
     print("Extrayendo datos de la web de Adif y CRTM...")
     bloque_transportes = ""
-    todas_opciones = []
-    
-    rg = RutasGoogle()
     ahora = datetime.datetime.now()
-    
-    def extraer_minutos(texto):
-        if texto and "min" in texto:
-            try:
-                return int(texto.split()[0])
-            except ValueError:
-                return 0
-        return 0
-
-    def abreviar(texto):
-        if not texto: return ""
-        reemplazos = {
-            "Majadahonda": "Maj.",
-            "Intercambiador Moncloa": "Moncloa",
-            "Principe Pio": "PPio",
-            "Príncipe Pío": "PPio",
-            "Alonso Martinez": "A. Martinez",
-            "Alonso Martínez": "A. Martinez",
-            "J.Rodrigo-Hospital Puerta de Hierro": "Pta. Hierro",
-            "Escuela Universitaria de Estadistica": "Esc. Estadistica",
-            "Estación de Tren Cercanías": "Cercanías",
-            "Transbordo / Andar": "Andar"
-        }
-        for k, v in reemplazos.items():
-            texto = texto.replace(k, v)
-        # Recortar textos inútilmente largos de Google como "Villalba -Aeropuerto-T4"
-        if "-" in texto and len(texto) > 20: 
-            texto = texto.split("-")[0].strip()
-        return texto
     
     # 1. Trenes de Cercanías
     try:
         c = Cercanias()
         trenes = c.obtener_proximos_trenes_madrid()
         
-        rutas_trenes_mapa = rg.obtener_tiempo_transito_neto("estacion")
-        
-        # Determine the "general" line purely for the section header
+        bloque_transportes += f"🚆 *Cercanías*\n"
         if not trenes:
-            bloque_transportes += "⚠️ *Cercanías Majadahonda*\nNo hay trenes próximos hacia Madrid.\n\n"
+            bloque_transportes += "No hay trenes próximos hacia Madrid.\n\n"
         else:
-            # Pick a fallback route for the header
-            fallback_ruta = list(rutas_trenes_mapa.values())[0] if isinstance(rutas_trenes_mapa, dict) and rutas_trenes_mapa else {"tiempo": "", "ruta": ""}
-            
-            # Formateamos cabecera basándonos en la primera ruta si es posible
-            tiempo_header = fallback_ruta.get("tiempo", "")
-            ruta_str_resumen = fallback_ruta.get("ruta", "")
-            
-            if tiempo_header:
-                bloque_transportes += f"🚆 *Cercanías*\n⏱️ ~{tiempo_header}\n"
-            else:
-                bloque_transportes += f"🚆 *Cercanías*\n"
-            
-            for t in trenes[:3]:
+            for t in trenes[:5]:
                 linea_tren = t['linea']
-                tiempo = f"{t['minutos_restantes']}m" if t['minutos_restantes'] > 0 else "Ahora"
-                
-                # Fetch route specifics for this exact train line
-                if isinstance(rutas_trenes_mapa, dict):
-                    ruta_especifica = rutas_trenes_mapa.get(linea_tren, fallback_ruta)
+                if t['minutos_restantes'] >= 0:
+                    llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'])
+                    llegada_str = llegada_dt.strftime('%H:%M')
+                    tiempo = f"({t['minutos_restantes']}m)" if t['minutos_restantes'] > 0 else "(Ahora)"
                 else:
-                    ruta_especifica = fallback_ruta
-                    
-                tiempo_ruta = ruta_especifica.get("tiempo", "")
-                minutos_ruta = extraer_minutos(tiempo_ruta)
-                detalles_ruta = ruta_especifica.get("detalles", [])
-                ruta_str = ruta_especifica.get("ruta", "")
-                
-                texto_llegada_suanzes = ""
-                if minutos_ruta > 0 and t['minutos_restantes'] >= 0:
-                    llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_ruta)
-                    texto_llegada_suanzes = f" ➔ Llega {llegada_dt.strftime('%H:%M')}"
-                    
-                    todas_opciones.append({
-                        "tipo": "🚆 Cercanías",
-                        "llegada": llegada_dt,
-                        "tiempo_salida_str": tiempo,
-                        "min_restantes": t['minutos_restantes'],
-                        "linea": linea_tren,
-                        "anden": t.get('anden', ''),
-                        "tiempo_trayecto": tiempo_ruta,
-                        "detalles": detalles_ruta,
-                        "hora_original": t['hora_original']
-                    })
-                    
-                bloque_transportes += f"• {t['hora_original']} ({tiempo}) - {linea_tren}{texto_llegada_suanzes}\n"
+                    llegada_str = t['hora_original']
+                    tiempo = "(?)"
+                bloque_transportes += f"• {llegada_str} {tiempo} - {linea_tren}\n"
             bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Cercanías: {e}\n\n"
@@ -188,7 +140,6 @@ if __name__ == "__main__":
     # 2. Autobuses Interurbanos
     try:
         b = Buses()
-        
         paradas_config = [
             {"id": "17699", "nombre": "Farmacia Rotonda FGL", "limite": 3},
             {"id": "07305", "nombre": "Estación sentido Madrid", "limite": 3}
@@ -200,85 +151,33 @@ if __name__ == "__main__":
             limite = parada["limite"]
             
             tiempos_buses = b.obtener_tiempos_parada(id_parada)
-            
-            # Extraer tiempo neto de viaje (sin el transbordo inicial), usando su ID de parada
-            tiempo_viaje_bus_dict = rg.obtener_tiempo_transito_neto(id_parada)
-            tiempo_viaje_bus = tiempo_viaje_bus_dict.get("tiempo", "")
-            ruta_viaje_bus = tiempo_viaje_bus_dict.get("ruta", "")
-            detalles_bus = tiempo_viaje_bus_dict.get("detalles", [])
-            minutos_viaje_bus = extraer_minutos(tiempo_viaje_bus)
-            texto_viaje_bus = f"\n⏱️ ~{tiempo_viaje_bus}" if tiempo_viaje_bus else ""
-            
-            bloque_transportes += f"🚌 *{nombre}*{texto_viaje_bus}\n"
+            bloque_transportes += f"🚌 *{nombre}*\n"
                 
             if not tiempos_buses:
                 bloque_transportes += "No hay buses próximos.\n\n"
             else:
                 for t in tiempos_buses[:limite]:
-                    tiempo = f"{t['minutos_restantes']}m" if t['minutos_restantes'] > 0 else "Ahora"
-                    
-                    texto_llegada_suanzes = ""
-                    if minutos_viaje_bus > 0 and t['minutos_restantes'] >= 0:
-                        llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'] + minutos_viaje_bus)
-                        texto_llegada_suanzes = f" ➔ Llega {llegada_dt.strftime('%H:%M')}"
-                        
-                        detalles_reales = copy.deepcopy(detalles_bus)
-                        for d in detalles_reales:
-                            if d["modo"] == "TRANSIT":
-                                d["linea"] = t['linea']
-                                break
-                                
-                        todas_opciones.append({
-                            "tipo": f"🚌 {nombre}",
-                            "llegada": llegada_dt,
-                            "tiempo_salida_str": tiempo,
-                            "min_restantes": t['minutos_restantes'],
-                            "linea": t['linea'],
-                            "tiempo_trayecto": tiempo_viaje_bus,
-                            "detalles": detalles_reales,
-                            "hora_original": t['hora_llegada']
-                        })
-                        
-                    bloque_transportes += f"• {t['hora_llegada']} ({tiempo}) - {t['linea']}{texto_llegada_suanzes}\n"
+                    tiempo = f"({t['minutos_restantes']}m)" if t['minutos_restantes'] > 0 else "(Ahora)"
+                    bloque_transportes += f"• {t['hora_llegada']} {tiempo} - {t['linea']}\n"
                 bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Autobuses: {e}"
         
-    header_mejores = "🏆 *LAS TRES MEJORES OPCIONES:*\n\n"
-    if todas_opciones:
-        todas_opciones.sort(key=lambda x: x["llegada"])
-        for idx, opc in enumerate(todas_opciones[:3], 1):
-            if idx == 1: emoji = "🥇"
-            elif idx == 2: emoji = "🥈"
-            else: emoji = "🥉"
-            llegada_str = opc["llegada"].strftime('%H:%M')
-            
-            # Format title
-            if "Cercanías" in opc['tipo'] and opc.get('anden'):
-                titulo = f"{opc['tipo']} ({opc['linea']} - A{opc['anden']})"
-            else:
-                titulo = opc['tipo']
-                
-            header_mejores += f"{emoji} *{titulo}*\n"
-            
-            salida_formato = opc['tiempo_salida_str'].replace(" min", "m")
-            hora_salida = opc['hora_original']
-            header_mejores += f"⏳ Salida: {hora_salida} (⏱️ {salida_formato})\n"
-            header_mejores += f"🏁 Llegada: {llegada_str} (⏱️ {opc['tiempo_trayecto']})\n"
-            
-            for d in opc["detalles"]:
-                if d["modo"] == "TRANSIT":
-                    o_abrv = abreviar(d['origen'])
-                    d_abrv = abreviar(d['destino'])
-                    header_mejores += f"  ↓ {d['duracion']}m • {d['linea']} ({o_abrv} ➔ {d_abrv})\n"
-                elif d["modo"] == "WALK" and d["duracion"] > 0:
-                    instr_abrv = abreviar(d['instruccion'])
-                    header_mejores += f"  🚶 {d['duracion']}m • {instr_abrv}\n"
-            header_mejores += "\n"
+    print("Enviando estado de transporte...")
+    bot.broadcast(bloque_transportes.strip())
+    
+    # 3. DGT Cameras
+    print("Extrayendo cámaras de la DGT...")
+    urls = dgt_cameras.get_dgt_cams()
+    if urls:
+        print(f"Encontradas {len(urls)} cámaras. Creando collage...")
+        collage_path = "dgt_collage.jpg"
+        if dgt_cameras.create_collage(urls, output_path=collage_path):
+            print("Collage creado. Enviando a Telegram...")
+            bot.broadcast_image(collage_path, caption="📷 *Cámaras DGT (A-6)*")
+        else:
+            print("No se pudo crear el collage.")
     else:
-         header_mejores += "No hay opciones de viaje disponibles.\n\n"
-         
-    mensaje_final = header_mejores + "---\n\n" + bloque_transportes
+        print("No se encontraron URLs de cámaras DGT.")
 
-    bot.broadcast(mensaje_final.strip())
-    print("Broadcast completado exitosamente.")
+    print("Proceso completado.")
