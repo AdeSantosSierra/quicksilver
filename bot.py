@@ -128,11 +128,9 @@ if __name__ == "__main__":
                 if t['minutos_restantes'] >= 0:
                     llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'])
                     llegada_str = llegada_dt.strftime('%H:%M')
-                    tiempo = f"({t['minutos_restantes']}m)" if t['minutos_restantes'] > 0 else "(Ahora)"
                 else:
                     llegada_str = t['hora_original']
-                    tiempo = "(?)"
-                bloque_transportes += f"• {llegada_str} {tiempo} - {linea_tren}\n"
+                bloque_transportes += f"• {llegada_str} - {linea_tren}\n"
             bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Cercanías: {e}\n\n"
@@ -157,8 +155,7 @@ if __name__ == "__main__":
                 bloque_transportes += "No hay buses próximos.\n\n"
             else:
                 for t in tiempos_buses[:limite]:
-                    tiempo = f"({t['minutos_restantes']}m)" if t['minutos_restantes'] > 0 else "(Ahora)"
-                    bloque_transportes += f"• {t['hora_llegada']} {tiempo} - {t['linea']}\n"
+                    bloque_transportes += f"• {t['hora_llegada']} - {t['linea']}\n"
                 bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Autobuses: {e}"
