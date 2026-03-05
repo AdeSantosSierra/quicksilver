@@ -52,7 +52,14 @@ class Cercanias:
     def obtener_proximos_trenes(self) -> List[Dict[str, Union[str, int]]]:
         """
         Devuelve una lista de diccionarios con la información de los próximos trenes.
+        Ejecutado en un ThreadExecutor para evitar el problema de Playwright
+        y asyncio "It looks like you are using Playwright Sync API inside the asyncio loop".
         """
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(self._obtener_proximos_trenes_sync).result()
+
+    def _obtener_proximos_trenes_sync(self) -> List[Dict[str, Union[str, int]]]:
         resultados = []
         
         with sync_playwright() as p:

@@ -3,3 +3,4 @@ python-dotenv
 beautifulsoup4
 playwright
 Pillow
+python-telegram-bot

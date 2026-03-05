@@ -1,129 +1,56 @@
 import os
 import json
 import logging
-import requests
 import datetime
+import asyncio
 from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+from cercanias import Cercanias
+from buses import Buses
+import dgt_cameras
 
-class CorrecaminosBot:
-    def __init__(self, token=None):
-        load_dotenv()
-        self.token = token or os.getenv("TELEGRAM_BOT_TOKEN")
-        self.base_url = f"https://api.telegram.org/bot{self.token}"
-        self.subscribers_file = "subscribers.json"
-        self.subscribers = self._load_subscribers()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-    def _load_subscribers(self):
-        """Carga los chat_ids de usuarios que han hablado con el bot."""
-        if os.path.exists(self.subscribers_file):
-            try:
-                with open(self.subscribers_file, "r") as f:
-                    return set(json.load(f))
-            except json.JSONDecodeError:
-                return set()
-        return set()
+load_dotenv()
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-    def _save_subscribers(self):
-        """Guarda la lista de usuarios en disco."""
-        with open(self.subscribers_file, "w") as f:
-            json.dump(list(self.subscribers), f)
+SUBSCRIBERS_FILE = "subscribers.json"
 
-    def fetch_new_users(self):
-        """Lee los últimos mensajes del bot para suscribir a nuevos usuarios."""
-        url = f"{self.base_url}/getUpdates"
+def load_subscribers():
+    if os.path.exists(SUBSCRIBERS_FILE):
         try:
-            response = requests.get(url).json()
-            if response.get("ok"):
-                new_users = False
-                for result in response.get("result", []):
-                    if "message" in result:
-                        chat_id = result["message"]["chat"]["id"]
-                        if chat_id not in self.subscribers:
-                            self.subscribers.add(chat_id)
-                            new_users = True
-                            username = result["message"]["chat"].get("username", "Unknown")
-                            logging.info(f"Nuevo subscritor añadido: {username} ({chat_id})")
-                
-                if new_users:
-                    self._save_subscribers()
-        except Exception as e:
-            logging.error(f"Error fetching updates: {e}")
+            with open(SUBSCRIBERS_FILE, "r") as f:
+                return set(json.load(f))
+        except json.JSONDecodeError:
+            return set()
+    return set()
 
-    def broadcast(self, message: str):
-        """Envía un mensaje a todos los usuarios suscritos."""
-        if not self.subscribers:
-            logging.warning("No hay suscriptores para enviar el broadcast.")
-            return
+def save_subscribers(subs):
+    with open(SUBSCRIBERS_FILE, "w") as f:
+        json.dump(list(subs), f)
 
-        logging.info(f"Haciendo broadcast a {len(self.subscribers)} usuario(s)...")
-        for chat_id in self.subscribers:
-            self._send_message(chat_id, message)
+suscriptores = load_subscribers()
 
-    def _send_image(self, chat_id: int, image_path: str, caption: str = ""):
-        url = f"{self.base_url}/sendPhoto"
-        try:
-            with open(image_path, "rb") as photo:
-                payload = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
-                files = {"photo": photo}
-                response = requests.post(url, data=payload, files=files).json()
-                if not response.get("ok"):
-                    logging.error(f"Fallo enviando foto a {chat_id}: {response}")
-        except Exception as e:
-            logging.error(f"Excepción enviando foto a {chat_id}: {e}")
-
-    def broadcast_image(self, image_path: str, caption: str = ""):
-        """Envía una imagen a todos los usuarios suscritos."""
-        if not self.subscribers:
-            logging.warning("No hay suscriptores para enviar el broadcast de imagen.")
-            return
-
-        logging.info(f"Haciendo broadcast de imagen a {len(self.subscribers)} usuario(s)...")
-        for chat_id in self.subscribers:
-            self._send_image(chat_id, image_path, caption)
-
-    def _send_message(self, chat_id: int, text: str):
-        url = f"{self.base_url}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "Markdown"
-        }
-        try:
-            response = requests.post(url, json=payload).json()
-            if not response.get("ok"):
-                logging.error(f"Fallo enviando a {chat_id}: {response}")
-        except Exception as e:
-            logging.error(f"Excepción enviando a {chat_id}: {e}")
-
-if __name__ == "__main__":
-    from cercanias import Cercanias
-    from buses import Buses
-    import dgt_cameras
-    
-    bot = CorrecaminosBot()
-    print("Buscando nuevos usuarios...")
-    bot.fetch_new_users()
-    
-    if not bot.subscribers:
-        print("No hay suscriptores. Abortando broadcast.")
-        exit(0)
-    
-    print("Extrayendo datos de la web de Adif y CRTM...")
+async def send_transport_update(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    logging.info("Extrayendo datos de la web de Adif y CRTM...")
     bloque_transportes = ""
     ahora = datetime.datetime.now()
     
-    # 1. Trenes de Cercanías
+    # 1. Cercanías
     try:
         c = Cercanias()
         trenes = c.obtener_proximos_trenes_madrid()
         
+        # Filtro extra para Alberto: Solo trenes que pasen por el andén 1 (dirección Príncipe Pío)
+        trenes_anden_1 = [t for t in trenes if str(t.get('anden', '')).strip() == '1']
+        
         bloque_transportes += f"🚆 *Cercanías*\n"
-        if not trenes:
-            bloque_transportes += "No hay trenes próximos hacia Madrid.\n\n"
+        if not trenes_anden_1:
+            bloque_transportes += "No hay trenes próximos hacia Príncipe Pío (Andén 1).\n\n"
         else:
-            for t in trenes[:5]:
+            for t in trenes_anden_1[:5]:
                 linea_tren = t['linea']
                 if t['minutos_restantes'] >= 0:
                     llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'])
@@ -160,21 +87,141 @@ if __name__ == "__main__":
     except Exception as e:
         bloque_transportes += f"❌ Error extrayendo Autobuses: {e}"
         
-    print("Enviando estado de transporte...")
-    bot.broadcast(bloque_transportes.strip())
+    logging.info(f"Enviando texto a {chat_id}...")
+    await context.bot.send_message(chat_id=chat_id, text=bloque_transportes.strip(), parse_mode="Markdown")
     
     # 3. DGT Cameras
-    print("Extrayendo cámaras de la DGT...")
-    urls = dgt_cameras.get_dgt_cams()
-    if urls:
-        print(f"Encontradas {len(urls)} cámaras. Creando collage...")
-        collage_path = "dgt_collage.jpg"
-        if dgt_cameras.create_collage(urls, output_path=collage_path):
-            print("Collage creado. Enviando a Telegram...")
-            bot.broadcast_image(collage_path, caption="📷 *Cámaras DGT (A-6)*")
+    logging.info("Extrayendo cámaras de la DGT...")
+    await context.bot.send_message(chat_id=chat_id, text="📷 Obteniendo cámaras de la DGT A6, un segundo, por favor...")
+    try:
+        urls = dgt_cameras.get_dgt_cams()
+        if urls:
+            collage_path = "dgt_collage.jpg"
+            if dgt_cameras.create_collage(urls, output_path=collage_path):
+                with open(collage_path, "rb") as photo:
+                    await context.bot.send_photo(chat_id=chat_id, photo=photo, caption="📷 *Cámaras DGT (A-6)*", parse_mode="Markdown")
+            else:
+                logging.error("No se pudo crear el collage.")
         else:
-            print("No se pudo crear el collage.")
-    else:
-        print("No se encontraron URLs de cámaras DGT.")
+            logging.error("No se encontraron URLs de cámaras DGT.")
+    except Exception as e:
+        logging.error(f"Error procesando cámaras DGT: {e}")
 
-    print("Proceso completado.")
+async def send_transport_update_ana(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    logging.info("Extrayendo datos de la web de Adif y CRTM para /ana...")
+    bloque_transportes = ""
+    ahora = datetime.datetime.now()
+    
+    # 1. Cercanías Específico
+    try:
+        c = Cercanias(url="https://www.adif.es/-/10001-aravaca")
+        trenes = c.obtener_proximos_trenes_madrid()
+        
+        # Filtro extra para Ana: Solo trenes que pasen por el andén 1 (dirección Príncipe Pío)
+        trenes_anden_1 = [t for t in trenes if str(t.get('anden', '')).strip() == '1']
+        
+        bloque_transportes += f"🚆 *Cercanías (Aravaca)*\n"
+        if not trenes_anden_1:
+            bloque_transportes += "No hay trenes próximos hacia Príncipe Pío (Andén 1).\n\n"
+        else:
+            for t in trenes_anden_1[:5]:
+                linea_tren = t['linea']
+                if t['minutos_restantes'] >= 0:
+                    llegada_dt = ahora + datetime.timedelta(minutes=t['minutos_restantes'])
+                    llegada_str = llegada_dt.strftime('%H:%M')
+                else:
+                    llegada_str = t['hora_original']
+                bloque_transportes += f"• {llegada_str} - {linea_tren}\n"
+            bloque_transportes += "\n"
+    except Exception as e:
+        bloque_transportes += f"❌ Error extrayendo Cercanías: {e}\n\n"
+
+    # 2. Autobuses Interurbanos
+    try:
+        b = Buses()
+        paradas_config = [
+            {"id": "11980", "nombre": "Parada 11980", "limite": 5},
+            {"id": "02419", "nombre": "Parada 02419", "limite": 5},
+            {"id": "17480", "nombre": "Parada 17480", "limite": 5},
+            {"id": "09478", "nombre": "Parada 09478", "limite": 5}
+        ]
+        lineas_permitidas = ["160", "161", "657", "657a", "658"]
+        
+        for parada in paradas_config:
+            id_parada = parada["id"]
+            nombre = f"{parada['nombre']}"
+            limite = parada["limite"]
+            
+            tiempos_buses_crudo = b.obtener_tiempos_parada(id_parada)
+            # Filtrar por líneas permitidas
+            tiempos_buses = [t for t in tiempos_buses_crudo if str(t['linea']).lower() in lineas_permitidas]
+            
+            bloque_transportes += f"🚌 *{nombre}*\n"
+                
+            if not tiempos_buses:
+                bloque_transportes += "No hay buses próximos de las líneas seleccionadas.\n\n"
+            else:
+                for t in tiempos_buses[:limite]:
+                    bloque_transportes += f"• {t['hora_llegada']} - {t['linea']}\n"
+                bloque_transportes += "\n"
+    except Exception as e:
+        bloque_transportes += f"❌ Error extrayendo Autobuses: {e}\n\n"
+        
+    logging.info(f"Enviando texto a {chat_id}...")
+    await context.bot.send_message(chat_id=chat_id, text=bloque_transportes.strip(), parse_mode="Markdown")
+    
+    # 3. DGT Cameras
+    logging.info("Extrayendo cámaras de la DGT...")
+    await context.bot.send_message(chat_id=chat_id, text="📷 Obteniendo cámaras de la DGT A6, un segundo, por favor...")
+    try:
+        urls = dgt_cameras.get_dgt_cams()
+        if urls:
+            collage_path = "dgt_collage.jpg"
+            if dgt_cameras.create_collage(urls, output_path=collage_path):
+                with open(collage_path, "rb") as photo:
+                    await context.bot.send_photo(chat_id=chat_id, photo=photo, caption="📷 *Cámaras DGT (A-6)*", parse_mode="Markdown")
+            else:
+                logging.error("No se pudo crear el collage.")
+        else:
+            logging.error("No se encontraron URLs de cámaras DGT.")
+    except Exception as e:
+        logging.error(f"Error procesando cámaras DGT: {e}")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id not in suscriptores:
+        suscriptores.add(chat_id)
+        save_subscribers(suscriptores)
+    await update.message.reply_text("¡Hola! Soy CorrecaminosBot. Usa /alberto o /ana para recibir el estado del transporte al instante.")
+
+async def alberto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id not in suscriptores:
+        suscriptores.add(chat_id)
+        save_subscribers(suscriptores)
+        
+    await update.message.reply_text("🔄 Consultando transportes...")
+    await send_transport_update(context, chat_id)
+
+async def ana_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id not in suscriptores:
+        suscriptores.add(chat_id)
+        save_subscribers(suscriptores)
+        
+    await update.message.reply_text("🔄 Consultando transportes...")
+    await send_transport_update_ana(context, chat_id)
+
+if __name__ == '__main__':
+    if not TOKEN:
+        logging.error("No se encontró TELEGRAM_BOT_TOKEN en el entorno.")
+        exit(1)
+        
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("alberto", alberto_command))
+    app.add_handler(CommandHandler("ana", ana_command))
+
+    logging.info("Bot en ejecución. Pulsa Ctrl+C para salir.")
+    app.run_polling()

@@ -4,6 +4,11 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 def get_dgt_cams():
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        return pool.submit(_get_dgt_cams_sync).result()
+
+def _get_dgt_cams_sync():
     urls_to_check = [
         "https://www.dgt.es/conoce-el-estado-del-trafico/camaras-de-trafico/?pag=1&prov=28&carr=A-6",
         "https://www.dgt.es/conoce-el-estado-del-trafico/camaras-de-trafico/?pag=2&prov=28&carr=A-6"
