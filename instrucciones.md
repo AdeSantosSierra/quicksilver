@@ -14,8 +14,9 @@ Todas estas instrucciones, puedes guardarlas en un MD o dodne quieras, para que 
 - **Directorio Raíz**: `/home/alberto/quicksilver`
 - **Entorno Virtual**: `/home/alberto/quicksilver/venv`
 - **Gestión de Ejecución (Persistencia)**: Utiliza `systemd` como usuario local.
-  - Para ver el estado actual: `systemctl --user status quicksilver-bot.service`
-  - Para reiniciarlo: `systemctl --user restart quicksilver-bot.service`
-  - Para apagarlo: `systemctl --user stop quicksilver-bot.service`
-  - Para ver los registros y excepciones en vivo: `journalctl --user -fu quicksilver-bot.service`
+  - Tienes 3 servicios independientes corriendo en paralelo:
+    - **Telegram Bot (`bot.py`)**: Devuelve de forma instantánea resultados leídos. `systemctl --user status quicksilver-bot.service`
+    - **Data Collector (`collector.py`)**: Daemon en el fondo que rasca Cercanías/CRTM cada minuto a MongoDB. `systemctl --user status quicksilver-collector.service`
+    - **Image Collector (`image_collector.py`)**: Daemon en el fondo que descarga las cámaras de la DGT al disco cada minuto. `systemctl --user status quicksilver-image-collector.service`
+  - Puedes operarlos individualmente con `start`, `stop`, `restart` y ver los logs con `journalctl --user -fu quicksilver-bot.service` (o el que corresponda).
 - **Filtros Actuales de Cercanías**: Los comandos `/alberto` (Majadahonda) y `/ana` (Aravaca) filtran exclusivamente los trenes que pasen por el **Andén 1** (asegurando el flujo pasante hacia Príncipe Pío / Chamartín).

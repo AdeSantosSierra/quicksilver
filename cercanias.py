@@ -4,8 +4,9 @@ from typing import List, Dict, Union
 from playwright.sync_api import sync_playwright
 
 class Cercanias:
-    def __init__(self, url: str = "https://www.adif.es/w/10007-majadahonda"):
+    def __init__(self, url: str = "https://www.adif.es/w/10007-majadahonda", page = None):
         self.url = url
+        self.page = page
 
     def _calcular_tiempo_restante(self, hora_str: str) -> int:
         """
@@ -52,16 +53,18 @@ class Cercanias:
     def obtener_proximos_trenes(self) -> List[Dict[str, Union[str, int]]]:
         """
         Devuelve una lista de diccionarios con la información de los próximos trenes.
-        Ejecutado en un ThreadExecutor para evitar el problema de Playwright
-        y asyncio "It looks like you are using Playwright Sync API inside the asyncio loop".
+        Si la clase fue inicializada con un 'page' de Playwright inyectado,
+        lo reúsamos directamente de forma síncrona. Si no, lanzamos uno por nuestro lado.
         """
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(self._obtener_proximos_trenes_sync).result()
+        if self.page:
+            return self._obtener_proximos_trenes_sync(self.page)
+        else:
+            # Fallback en caso de que alguien llame a Cercanias() instanciándolo tal cual
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(self._obtener_proximos_trenes_standalone).result()
 
-    def _obtener_proximos_trenes_sync(self) -> List[Dict[str, Union[str, int]]]:
-        resultados = []
-        
+    def _obtener_proximos_trenes_standalone(self) -> List[Dict[str, Union[str, int]]]:
         with sync_playwright() as p:
             browser = p.firefox.launch(headless=True)
             context = browser.new_context(
@@ -69,47 +72,49 @@ class Cercanias:
                 viewport={"width": 1920, "height": 1080}
             )
             page = context.new_page()
+            resultados = self._obtener_proximos_trenes_sync(page)
+            browser.close()
+            return resultados
+
+    def _obtener_proximos_trenes_sync(self, page) -> List[Dict[str, Union[str, int]]]:
+        resultados = []
+        try:
+            page.goto(self.url, wait_until="networkidle", timeout=30000)
             
-            # Navegar a la página
-            try:
-                page.goto(self.url, wait_until="networkidle", timeout=30000)
-                
-                # Esperar a que los elementos del horario estén visibles para mayor robustez
-                page.wait_for_selector("tr.horario-row.cercanias", state="attached", timeout=30000)
-                
-                # Extraer usando locators (traspasa Shadow DOM si lo hay)
-                rows = page.locator("tr.horario-row.cercanias").all()
-                
-                for row in rows:
-                    try:
-                        hora = row.locator(".col-hora span").first.text_content(timeout=5000).strip()
-                        destino_loc = row.locator(".col-destino a")
-                        if destino_loc.count() > 0:
-                            destino = destino_loc.first.text_content(timeout=5000).strip()
-                        else:
-                            destino = row.locator(".col-destino").text_content(timeout=5000).strip()
-                            
-                        linea = row.locator(".col-tren .lineColored").text_content(timeout=5000).strip()
-                        via = row.locator(".col-via span").first.text_content(timeout=5000).strip()
+            # Esperar a que los elementos del horario estén visibles para mayor robustez
+            page.wait_for_selector("tr.horario-row.cercanias", state="attached", timeout=30000)
+            
+            # Extraer usando locators (traspasa Shadow DOM si lo hay)
+            rows = page.locator("tr.horario-row.cercanias").all()
+            
+            for row in rows:
+                try:
+                    hora = row.locator(".col-hora span").first.text_content(timeout=5000).strip()
+                    destino_loc = row.locator(".col-destino a")
+                    if destino_loc.count() > 0:
+                        destino = destino_loc.first.text_content(timeout=5000).strip()
+                    else:
+                        destino = row.locator(".col-destino").text_content(timeout=5000).strip()
                         
-                        min_restantes = self._calcular_tiempo_restante(hora)
-                        
-                        if hora and destino:
-                            resultados.append({
-                                'hora_original': hora,
-                                'destino': destino,
-                                'linea': linea,
-                                'anden': via,
-                                'minutos_restantes': min_restantes
-                            })
-                    except Exception as e:
-                        print(f"Saltando fila incompleta: {e}")
-                        continue
-            except Exception as e:
-                print(f"Error cargando o buscando elementos: {e}")
-            finally:
-                browser.close()
-                
+                    linea = row.locator(".col-tren .lineColored").text_content(timeout=5000).strip()
+                    via = row.locator(".col-via span").first.text_content(timeout=5000).strip()
+                    
+                    min_restantes = self._calcular_tiempo_restante(hora)
+                    
+                    if hora and destino:
+                        resultados.append({
+                            'hora_original': hora,
+                            'destino': destino,
+                            'linea': linea,
+                            'anden': via,
+                            'minutos_restantes': min_restantes
+                        })
+                except Exception as e:
+                    print(f"Saltando fila incompleta: {e}")
+                    continue
+        except Exception as e:
+            print(f"Error cargando o buscando elementos: {e}")
+            
         return resultados
 
     def obtener_proximos_trenes_madrid(self) -> List[Dict[str, Union[str, int]]]:
