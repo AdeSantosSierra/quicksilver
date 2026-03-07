@@ -1,0 +1,164 @@
+{
+  "stopTimes": {
+    "actualDate": "2026-03-07T15:46:31+01:00",
+    "stop": {
+      "codStop": "4_53",
+      "shortCodStop": "53",
+      "name": "MONCLOA",
+      "park": 0,
+      "nightLinesService": 0
+    },
+    "times": {
+      "Time": [
+        {
+          "line": {
+            "codLine": "4__6___",
+            "shortDescription": "6",
+            "description": "6-Circular",
+            "codMode": "4",
+            "updateDate": "2026-01-29T11:46:00+01:00",
+            "updateKmlDate": "2025-06-18T12:08:27+02:00",
+            "nightService": 0,
+            "active": true,
+            "shortItinerary": {},
+            "companyCode": ""
+          },
+          "direction": 1,
+          "destination": "LAGUNA",
+          "destinationStop": {
+            "codStop": "4_104",
+            "shortCodStop": "104",
+            "name": "LAGUNA",
+            "park": 0,
+            "nightLinesService": 0
+          },
+          "time": "2026-03-07T15:48:10+01:00",
+          "codVehicle": "",
+          "codIssue": ""
+        },
+        {
+          "line": {
+            "codLine": "4__6___",
+            "shortDescription": "6",
+            "description": "6-Circular",
+            "codMode": "4",
+            "updateDate": "2026-01-29T11:46:00+01:00",
+            "updateKmlDate": "2025-06-18T12:08:27+02:00",
+            "nightService": 0,
+            "active": true,
+            "shortItinerary": {},
+            "companyCode": ""
+          },
+          "direction": 1,
+          "destination": "LAGUNA",
+          "destinationStop": {
+            "codStop": "4_104",
+            "shortCodStop": "104",
+            "name": "LAGUNA",
+            "park": 0,
+            "nightLinesService": 0
+          },
+          "time": "2026-03-07T15:50:59+01:00",
+          "codVehicle": "",
+          "codIssue": ""
+        },
+        {
+          "line": {
+            "codLine": "4__6___",
+            "shortDescription": "6",
+            "description": "6-Circular",
+            "codMode": "4",
+            "updateDate": "2026-01-29T11:46:00+01:00",
+            "updateKmlDate": "2025-06-18T12:08:27+02:00",
+            "nightService": 0,
+            "active": true,
+            "shortItinerary": {},
+            "companyCode": ""
+          },
+          "direction": 2,
+          "destination": "LAGUNA",
+          "destinationStop": {
+            "codStop": "4_104",
+            "shortCodStop": "104",
+            "name": "LAGUNA",
+            "park": 0,
+            "nightLinesService": 0
+          },
+          "time": "2026-03-07T15:51:17+01:00",
+          "codVehicle": "",
+          "codIssue": ""
+        },
+        {
+          "line": {
+            "codLine": "4__6___",
+            "shortDescription": "6",
+            "description": "6-Circular",
+            "codMode": "4",
+            "updateDate": "2026-01-29T11:46:00+01:00",
+            "updateKmlDate": "2025-06-18T12:08:27+02:00",
+            "nightService": 0,
+            "active": true,
+            "shortItinerary": {},
+            "companyCode": ""
+          },
+          "direction": 2,
+          "destination": "LAGUNA",
+          "destinationStop": {
+            "codStop": "4_104",
+            "shortCodStop": "104",
+            "name": "LAGUNA",
+            "park": 0,
+            "nightLinesService": 0
+          },
+          "time": "2026-03-07T15:55:17+01:00",
+          "codVehicle": "",
+          "codIssue": ""
+        },
+        {
+          "line": {
+            "codLine": "4__6___",
+            "shortDescription": "6",
+            "description": "6-Circular",
+            "codMode": "4",
+            "updateDate": "2026-01-29T11:46:00+01:00",
+            "updateKmlDate": "2025-06-18T12:08:27+02:00",
+            "nightService": 0,
+            "active": true,
+            "shortItinerary": {},
+            "companyCode": ""
+          },
+          "direction": 1,
+          "destination": "LAGUNA",
+          "destinationStop": {
+            "codStop": "4_104",
+            "shortCodStop": "104",
+            "name": "LAGUNA",
+            "park": 0,
+            "nightLinesService": 0
+          },
+          "time": "2026-03-07T15:55:59+01:00",
+          "codVehicle": "",
+          "codIssue": ""
+        }
+      ]
+    },
+    "linesStatus": {
+      "LineStatus": [
+        {
+          "line": {
+            "codLine": "4__3___",
+            "shortDescription": "3"
+          },
+          "SAEStatus": true
+        },
+        {
+          "line": {
+            "codLine": "4__6___",
+            "shortDescription": "6"
+          },
+          "SAEStatus": true
+        }
+      ]
+    }
+  }
+}

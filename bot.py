@@ -44,7 +44,33 @@ def save_subscribers(subs):
 
 suscriptores = load_subscribers()
 
-def get_latest_transport_data(parada_id: str, limit: int = 5, lineas_permitidas: list = None):
+def format_minutos(minutos_val):
+    try:
+        m = int(minutos_val)
+        if m >= 60:
+            h = m // 60
+            rest = m % 60
+            if rest == 0:
+                return f"{h}h"
+            return f"{h}h {rest}min"
+        return f"{m} min"
+    except (ValueError, TypeError):
+        return "?"
+
+def format_metro_frecuencia(frec):
+    if frec is None: return "frec. variable"
+    try:
+        frec = float(frec)
+        if frec == int(frec):
+            return f"{int(frec)} min"
+        # Si tiene decimales, mostramos rango
+        low = int(frec)
+        high = low + 1
+        return f"{low}-{high} min"
+    except:
+        return "frec. variable"
+
+def get_latest_transport_data(parada_id: str, limit: int = 5, lineas_permitidas: list = None, unique_lines: bool = False):
     if extracciones is None:
         return []
     
@@ -60,11 +86,55 @@ def get_latest_transport_data(parada_id: str, limit: int = 5, lineas_permitidas:
     
     if lineas_permitidas:
         # El collector extrajo el campo 'shortDescription' que puede ser cosas como '657A'.
-        # Tenemos que hacer matches parciales (regex) para cada linea permitida.
-        regex_list = [{"linea": {"$regex": f"^{linea}", "$options": "i"}} for linea in lineas_permitidas]
+        # Tenemos que hacer matches EXACTOS (regex con ^ y $) para cada linea permitida.
+        regex_list = [{"linea": {"$regex": f"^{linea}$", "$options": "i"}} for linea in lineas_permitidas]
         query["$or"] = regex_list
     
-    results = list(extracciones.find(query).sort("minutos_restantes", 1).limit(limit))
+    results_raw = list(extracciones.find(query).sort("minutos_restantes", 1))
+    
+    # Filter duplicates and fix exact hour
+    results = []
+    seen = set()
+    ahora_dt = datetime.datetime.now()
+    
+    for r in results_raw:
+        # 1. Recalcular minutos reales respecto a 'ahora'
+        mins_orig = r.get("minutos_restantes")
+        if mins_orig == -999:
+            # Es un aviso de incidencia, lo mantenemos tal cual
+            real_mins = -999
+        else:
+            # Calcular cuánto tiempo ha pasado desde que se extrajo el dato
+            delta_mins = int((ahora_dt - latest_ts).total_seconds() / 60)
+            real_mins = mins_orig - delta_mins
+            
+            # Si el bus ya pasó hace más de 2 minutos, lo ignoramos
+            if real_mins < -2:
+                continue
+            # No mostrar negativos feos en la UI, mínimo 0
+            r["minutos_restantes"] = max(0, real_mins)
+
+        if unique_lines:
+            # Only 1 bus per line
+            ident = r.get("linea")
+        else:
+            # Exact deduplication
+            ident = (r.get("linea"), r.get("destino"), r.get("hora_llegada"))
+
+        if ident not in seen:
+            seen.add(ident)
+            
+            # Formatear siempre hora_llegada como HH:MM si solo trae minutos
+            hora = str(r.get("hora_llegada", ""))
+            if ":" not in hora and real_mins != -999:
+                # Si recalculo la hora aquí, será sobre el latest_ts + mins_originales
+                exact_time = latest_ts + datetime.timedelta(minutes=int(mins_orig))
+                r["hora_llegada"] = exact_time.strftime("%H:%M")
+                
+            results.append(r)
+            if len(results) >= limit:
+                break
+                
     return results
 
 async def send_transport_update(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
@@ -77,19 +147,20 @@ async def send_transport_update(context: ContextTypes.DEFAULT_TYPE, chat_id: int
         # En la lógica anterior, Alberto quería trenes de Majadahonda (Andén 1).
         # El collector guardó the 'anden'. Filtrémoslo aquí.
         trenes = get_latest_transport_data("Majadaho", limit=50)
-        trenes_anden_1 = [t for t in trenes if str(t.get('anden', '')).strip() == '1']
+        trenes_madrid = [t for t in trenes if str(t.get('anden', '')).strip() == '1']
         
         bloque_transportes += f"🚆 *Cercanías*\n"
-        if not trenes_anden_1:
-            bloque_transportes += "No hay trenes próximos hacia Príncipe Pío (Andén 1).\n\n"
+        if not trenes_madrid:
+            bloque_transportes += "No hay trenes próximos hacia Madrid.\n\n"
         else:
-            for t in trenes_anden_1[:5]:
-                bloque_transportes += f"• {t['hora_llegada']} - {t['linea']}\n"
+            for t in trenes_madrid[:5]:
+                minutos_formateados = format_minutos(t.get('minutos_restantes')); bloque_transportes += f"• {t['hora_llegada']} ({minutos_formateados}) - {t['linea']}\n"
             bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error leyendo Cercanías: {e}\n\n"
 
-    # 2. Autobuses Interurbanos
+
+    # 3. Autobuses Interurbanos
     try:
         paradas_config = [
             {"id": "00017699", "nombre": "Farmacia Rotonda FGL (17699)", "limite": 3},
@@ -108,20 +179,48 @@ async def send_transport_update(context: ContextTypes.DEFAULT_TYPE, chat_id: int
                 bloque_transportes += "No hay buses próximos.\n\n"
             else:
                 for t in buses[:limite]:
-                    bloque_transportes += f"• {t['hora_llegada']} - {t['linea']}\n"
+                    minutos_formateados = format_minutos(t.get('minutos_restantes')); bloque_transportes += f"• {t['hora_llegada']} ({minutos_formateados}) - {t['linea']}\n"
                 bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error leyendo Autobuses: {e}"
         
+    # 4. Metro (Líneas Personalizadas - Al Final)
+    try:
+        # Alberto: L3, L4, L10, L5
+        metro_configs = [
+            {"id": "4_53", "lineas": ["3"]},
+            {"id": "4_9", "lineas": ["4"]},
+            {"id": "4_1", "lineas": ["10"]},
+            {"id": "4_96", "lineas": ["5"]}
+        ]
+        
+        bloque_metro = ""
+        for conf in metro_configs:
+            m_data = get_latest_transport_data(conf["id"], lineas_permitidas=conf["lineas"], limit=3)
+            if not m_data: continue
+            
+            first = m_data[0]
+            l_name = first['linea']
+            if first.get('minutos_restantes') == -999:
+                bloque_metro += f"• L{l_name}: ⚠️ _Corte o demora grave_\n"
+            else:
+                f_str = format_metro_frecuencia(first.get("frecuencia_media"))
+                bloque_metro += f"• L{l_name}: Cada {f_str}\n"
+        
+        if bloque_metro:
+            bloque_transportes += "\n🚇 *Metro*\n" + bloque_metro
+
+    except Exception as e:
+        bloque_transportes += f"\n❌ Error leyendo Metro: {e}"
+
     logging.info(f"Enviando texto a {chat_id}...")
     await context.bot.send_message(chat_id=chat_id, text=bloque_transportes.strip(), parse_mode="Markdown")
     
-    # 3. DGT Cameras
+    # 5. DGT Cameras
     logging.info("Enviando foto de cámaras DGT desde disco...")
     try:
         collage_path = "dgt_collage.jpg"
         if os.path.exists(collage_path):
-            # We open and send it directly
             with open(collage_path, "rb") as photo:
                 await context.bot.send_photo(chat_id=chat_id, photo=photo, caption="📷 *Cámaras DGT (A-6)*", parse_mode="Markdown")
         else:
@@ -136,20 +235,20 @@ async def send_transport_update_ana(context: ContextTypes.DEFAULT_TYPE, chat_id:
     # 1. Cercanías (Aravaca -> 'Aravaca0')
     try:
         trenes = get_latest_transport_data("Aravaca0", limit=50)
-        # Filtro Andén 1
-        trenes_anden_1 = [t for t in trenes if str(t.get('anden', '')).strip() == '1']
+        trenes_madrid = [t for t in trenes if str(t.get('anden', '')).strip() == '2']
         
         bloque_transportes += f"🚆 *Cercanías (Aravaca)*\n"
-        if not trenes_anden_1:
-            bloque_transportes += "No hay trenes próximos hacia Príncipe Pío (Andén 1).\n\n"
+        if not trenes_madrid:
+            bloque_transportes += "No hay trenes próximos hacia Madrid.\n\n"
         else:
-            for t in trenes_anden_1[:5]:
-                bloque_transportes += f"• {t['hora_llegada']} - {t['linea']}\n"
+            for t in trenes_madrid[:5]:
+                minutos_formateados = format_minutos(t.get('minutos_restantes')); bloque_transportes += f"• {t['hora_llegada']} ({minutos_formateados}) - {t['linea']}\n"
             bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error leyendo Cercanías: {e}\n\n"
 
-    # 2. Autobuses Interurbanos
+
+    # 3. Autobuses Interurbanos
     try:
         paradas_config = [
             {"id": "00011980", "nombre": "Parada 11980", "limite": 5},
@@ -164,7 +263,10 @@ async def send_transport_update_ana(context: ContextTypes.DEFAULT_TYPE, chat_id:
             nombre = parada["nombre"]
             limite = parada["limite"]
             
-            buses = get_latest_transport_data(id_parada, limit=limite, lineas_permitidas=lineas_permitidas)
+            # Enforce unique lines ONLY for 17480 as requested
+            req_unique = True if id_parada == "00017480" else False
+            
+            buses = get_latest_transport_data(id_parada, limit=limite, lineas_permitidas=lineas_permitidas, unique_lines=req_unique)
             bloque_transportes += f"🚌 *{nombre}*\n"
                 
             if not buses:
@@ -179,20 +281,33 @@ async def send_transport_update_ana(context: ContextTypes.DEFAULT_TYPE, chat_id:
                 bloque_transportes += f"No hay buses próximos de las líneas {lineas_str}.\n\n"
             else:
                 for t in buses[:limite]:
-                    bloque_transportes += f"• {t['hora_llegada']} - {t['linea']}\n"
+                    minutos_formateados = format_minutos(t.get('minutos_restantes')); bloque_transportes += f"• {t['hora_llegada']} ({minutos_formateados}) - {t['linea']}\n"
                 bloque_transportes += "\n"
     except Exception as e:
         bloque_transportes += f"❌ Error leyendo Autobuses: {e}\n\n"
         
+    # 4. Metro (Ana: Solo L5 - Al Final)
+    try:
+        m_data = get_latest_transport_data("4_96", lineas_permitidas=["5"], limit=3)
+        if m_data:
+            first = m_data[0]
+            l_name = first['linea']
+            if first.get('minutos_restantes') == -999:
+                bloque_transportes += f"\n🚇 *Metro*\n• L{l_name}: ⚠️ _Corte o demora grave_"
+            else:
+                f_str = format_metro_frecuencia(first.get("frecuencia_media"))
+                bloque_transportes += f"\n🚇 *Metro*\n• L{l_name}: Cada {f_str}"
+    except Exception as e:
+        bloque_transportes += f"\n❌ Error leyendo Metro: {e}"
+
     logging.info(f"Enviando texto a {chat_id}...")
     await context.bot.send_message(chat_id=chat_id, text=bloque_transportes.strip(), parse_mode="Markdown")
     
-    # 3. DGT Cameras
+    # 5. DGT Cameras
     logging.info("Enviando foto de cámaras DGT desde disco para Ana...")
     try:
         collage_path = "dgt_collage.jpg"
         if os.path.exists(collage_path):
-            # We open and send it directly
             with open(collage_path, "rb") as photo:
                 await context.bot.send_photo(chat_id=chat_id, photo=photo, caption="📷 *Cámaras DGT (A-6)*", parse_mode="Markdown")
         else:

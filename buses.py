@@ -49,27 +49,11 @@ class Buses:
         if "_" not in str(cod_parada):
             cod_parada = f"8_{cod_parada}"
             
-        url = f"{self.base_url}/GetStopsTimes.php?codStop={cod_parada}&type=0&orderBy=2&stopTimesByIti="
-        resultados = []
+        res = self.obtener_datos_crudos_parada(cod_parada)
+        if not res:
+            return resultados
         
-        data = {}
-        for intento in range(4):
-            try:
-                res = requests.get(url, timeout=10)
-                res.raise_for_status()
-                data = res.json()
-                break
-            except requests.exceptions.Timeout:
-                # Si agota el intento 3 (cuarto intento), se rinde
-                if intento == 3:
-                    print(f"Timeout CRTM API para la parada {cod_parada} tras 4 intentos.")
-                    return resultados
-                time.sleep(2)
-            except Exception as e:
-                print(f"Error obteniendo tiempos de parada {cod_parada}: {e}")
-                return resultados
-                
-        tiempos_list = data.get("stopTimes", {}).get("times", {}).get("Time", [])
+        tiempos_list = res.get("stopTimes", {}).get("times", {}).get("Time", [])
         
         # En caso de venir vacío o no ser lista
         if not tiempos_list:
@@ -88,6 +72,7 @@ class Buses:
             min_restantes = self._calcular_tiempo_restante(time_iso)
             
             if min_restantes >= 0:
+                # Corregir minutos_restantes si es 0 (para que no parezca -1 luego)
                 resultados.append({
                     "linea": nombre_linea,
                     "destino": destino,
@@ -98,6 +83,30 @@ class Buses:
         # API can return unsorted by time sometimes, ensure sorted:
         resultados.sort(key=lambda x: x["minutos_restantes"])
         return resultados
+
+    def obtener_datos_crudos_parada(self, cod_parada: str) -> dict:
+        """
+        Consulta la API y devuelve el JSON completo de stopTimes.
+        """
+        if "_" not in str(cod_parada):
+            cod_parada = f"8_{cod_parada}"
+            
+        url = f"{self.base_url}/GetStopsTimes.php?codStop={cod_parada}&type=0&orderBy=2&stopTimesByIti="
+        
+        for intento in range(4):
+            try:
+                res = requests.get(url, timeout=10)
+                res.raise_for_status()
+                return res.json()
+            except requests.exceptions.Timeout:
+                if intento == 3:
+                    print(f"Timeout CRTM API para la parada {cod_parada} tras 4 intentos.")
+                    return {}
+                time.sleep(2)
+            except Exception as e:
+                print(f"Error obteniendo datos crudos de parada {cod_parada}: {e}")
+                return {}
+        return {}
 
 if __name__ == "__main__":
     buses = Buses()
